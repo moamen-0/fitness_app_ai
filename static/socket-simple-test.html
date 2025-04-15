@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Socket.IO Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #log {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 10px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .controls {
+            margin: 15px 0;
+        }
+        select, input {
+            padding: 8px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    </style>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Simple Socket.IO Connection Test</h1>
+
+    <div>
+        <label for="server-url">Server URL:</label>
+        <input type="text" id="server-url" value="https://ai-fitness-trainer-359385368046.us-central1.run.app">
+    </div>
+
+    <div>
+        <label for="transport-type">Transport Method:</label>
+        <select id="transport-type">
+            <option value="both">Both (WebSocket & Polling)</option>
+            <option value="websocket">WebSocket Only</option>
+            <option value="polling">Polling Only</option>
+        </select>
+    </div>
+
+    <div id="status">Status: Disconnected</div>
+
+    <div class="controls">
+        <button id="connect-btn">Connect</button>
+        <button id="disconnect-btn" disabled>Disconnect</button>
+        <button id="check-server-btn">Check Server</button>
+        <button id="clear-log-btn">Clear Log</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // DOM elements
+        const serverUrlInput = document.getElementById('server-url');
+        const transportType = document.getElementById('transport-type');
+        const statusDisplay = document.getElementById('status');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const checkServerBtn = document.getElementById('check-server-btn');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const logContainer = document.getElementById('log');
+
+        // Socket.IO instance
+        let socket = null;
+
+        // Log function
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        // Check server connectivity
+        async function checkServer() {
+            const serverUrl = serverUrlInput.value;
+            log(`Checking server connectivity: ${serverUrl}`, 'info');
+
+            try {
+                // First check basic connectivity
+                const basicResponse = await fetch(`${serverUrl}/api/exercises`);
+                
+                if (basicResponse.ok) {
+                    log(`Basic API endpoint reachable: ${basicResponse.status}`, 'success');
+                    const exercises = await basicResponse.json();
+                    log(`Found ${exercises.length} exercises`, 'success');
+                } else {
+                    log(`API endpoint returned error: ${basicResponse.status}`, 'error');
+                }
+
+                // Then check socket diagnostic endpoint
+                try {
+                    const socketDiagnostic = await fetch(`${serverUrl}/socket-diagnostic`);
+                    if (socketDiagnostic.ok) {
+                        const diagnosticData = await socketDiagnostic.json();
+                        log(`Socket diagnostic info:`, 'info');
+                        log(`- Socket.IO version: ${diagnosticData.socketio_version}`, 'info');
+                        log(`- Async mode: ${diagnosticData.socketio_config.async_mode}`, 'info');
+                        log(`- CORS: ${diagnosticData.socketio_config.cors_allowed_origins}`, 'info');
+                    } else {
+                        log(`Socket diagnostic unavailable: ${socketDiagnostic.status}`, 'error');
+                    }
+                } catch (diagError) {
+                    log(`Error checking socket diagnostic: ${diagError.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Server connectivity error: ${error.message}`, 'error');
+            }
+        }
+
+        // Connect to server
+        function connect() {
+            if (socket) {
+                log('Already connected or connecting. Disconnect first.', 'error');
+                return;
+            }
+
+            const serverUrl = serverUrlInput.value;
+            let transportOptions;
+
+            // Configure transport based on selection
+            switch (transportType.value) {
+                case 'websocket':
+                    transportOptions = {
+                        transports: ['websocket'],
+                        upgrade: false
+                    };
+                    log('Connecting using WebSocket transport only', 'info');
+                    break;
+                case 'polling':
+                    transportOptions = {
+                        transports: ['polling'],
+                        upgrade: false
+                    };
+                    log('Connecting using HTTP Polling transport only', 'info');
+                    break;
+                default:
+                    transportOptions = {
+                        transports: ['polling', 'websocket'],
+                        upgrade: true
+                    };
+                    log('Connecting using both transports (polling with upgrade to WebSocket)', 'info');
+                    break;
+            }
+
+            try {
+                log(`Connecting to ${serverUrl}...`, 'info');
+                
+                // Connection options
+                const options = {
+                    ...transportOptions,
+                    reconnection: true,
+                    reconnectionAttempts: 3,
+                    reconnectionDelay: 1000,
+                    timeout: 20000,
+                    forceNew: true
+                };
+
+                // Create socket connection
+                socket = io(serverUrl, options);
+                
+                // Connection timeout
+                const connectionTimeout = setTimeout(() => {
+                    if (socket && !socket.connected) {
+                        log('Connection timeout after 10 seconds', 'error');
+                    }
+                }, 10000);
+
+                // Socket events
+                socket.on('connect', () => {
+                    clearTimeout(connectionTimeout);
+                    log('Connected successfully!', 'success');
+                    statusDisplay.textContent = 'Status: Connected';
+                    statusDisplay.style.color = 'green';
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    
+                    // Log transport type
+                    const currentTransport = socket.io.engine.transport.name;
+                    log(`Using transport: ${currentTransport}`, 'info');
+                    
+                    // Check if transport changes (upgrade)
+                    socket.io.engine.on('upgrade', () => {
+                        const upgradedTransport = socket.io.engine.transport.name;
+                        log(`Transport upgraded to: ${upgradedTransport}`, 'success');
+                    });
+                });
+
+                socket.on('connect_error', (error) => {
+                    log(`Connection error: ${error.message}`, 'error');
+                });
+
+                socket.on('disconnect', (reason) => {
+                    log(`Disconnected: ${reason}`, 'info');
+                    statusDisplay.textContent = 'Status: Disconnected';
+                    statusDisplay.style.color = 'red';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                });
+
+                socket.io.on('reconnect_attempt', (attempt) => {
+                    log(`Reconnection attempt ${attempt}...`, 'info');
+                });
+
+                socket.io.on('reconnect', () => {
+                    log('Reconnected successfully', 'success');
+                    statusDisplay.textContent = 'Status: Connected';
+                    statusDisplay.style.color = 'green';
+                });
+
+                socket.io.on('reconnect_failed', () => {
+                    log('Failed to reconnect after multiple attempts', 'error');
+                });
+
+                socket.on('error', (error) => {
+                    log(`Socket error: ${error}`, 'error');
+                });
+            } catch (error) {
+                log(`Error setting up connection: ${error.message}`, 'error');
+            }
+        }
+
+        // Disconnect from server
+        function disconnect() {
+            if (socket) {
+                log('Disconnecting...', 'info');
+                socket.disconnect();
+                socket = null;
+            } else {
+                log('Not connected', 'error');
+            }
+        }
+
+        // Clear log
+        function clearLog() {
+            logContainer.innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        checkServerBtn.addEventListener('click', checkServer);
+        clearLogBtn.addEventListener('click', clearLog);
+
+        // Initial log
+        log('Socket.IO test page loaded', 'info');
+        log(`Using Socket.IO version: ${io.version}`, 'info');
+    </script>
+</body>
+</html>

@@ -33,13 +33,20 @@ from exercises.push_ups import push_ups
 
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
+
+# Update SocketIO configuration with proper settings for Cloud Run
+try:
+    import gevent
+except ImportError:
+    pass
+
 socketio = SocketIO(
     app, 
-    cors_allowed_origins="*",  # Or specify your exact origins for production
-    async_mode='gevent',
-    ping_timeout=30,
-    ping_interval=15,
-    engineio_logger=True  # Set to False in production
+    cors_allowed_origins="*",
+    async_mode='gevent',  # Use gevent for Cloud Run
+    ping_timeout=60,      # Longer timeouts for Cloud Run
+    ping_interval=25,     # More frequent pings
+    engineio_logger=True  # For debugging, set to False in production
 )
 
 # Setup for async processing
@@ -515,6 +522,24 @@ def socket_health():
         'timestamp': datetime.datetime.now().isoformat()
     }
 
+@app.route('/socket-diagnostic')
+def socket_diagnostic():
+    """Diagnostic endpoint to check Socket.IO configuration"""
+    socketio_config = {
+        'async_mode': socketio.async_mode,
+        'cors_allowed_origins': socketio.cors_allowed_origins,
+        'ping_timeout': socketio.ping_timeout,
+        'ping_interval': socketio.ping_interval,
+    }
+    
+    return {
+        'status': 'online',
+        'socketio_version': socketio.__version__,
+        'socketio_config': socketio_config,
+        'timestamp': datetime.datetime.now().isoformat(),
+        'environment': os.environ.get('GAE_ENV', 'not-on-app-engine')
+    }
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -541,9 +566,10 @@ if __name__ == '__main__':
         print(f"Error initializing libraries: {e}")
     
     port = int(os.environ.get('PORT', 8080))
+    print(f"Starting server on port {port}")
     socketio.run(
         app, 
         host='0.0.0.0', 
         port=port,
-        debug=False  # Set to False in production
+        debug=os.environ.get('DEBUG', 'False').lower() == 'true'
     )
