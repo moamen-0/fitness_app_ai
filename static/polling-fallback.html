@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTTP Polling Fallback Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #log {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 10px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .controls {
+            margin: 15px 0;
+        }
+        select, input {
+            padding: 8px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>HTTP Polling Fallback Test</h1>
+    <p>This page uses HTTP polling as a fallback when WebSockets are not available.</p>
+
+    <div>
+        <label for="server-url">Server URL:</label>
+        <input type="text" id="server-url" value="">
+    </div>
+
+    <div>
+        <label for="exercise-select">Exercise:</label>
+        <select id="exercise-select">
+            <option value="">-- Select Exercise --</option>
+        </select>
+    </div>
+
+    <div id="status">Status: Disconnected</div>
+
+    <div class="controls">
+        <button id="start-btn">Start Polling</button>
+        <button id="stop-btn" disabled>Stop Polling</button>
+        <button id="check-btn">Check Server</button>
+        <button id="clear-log-btn">Clear Log</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // DOM elements
+        const serverUrlInput = document.getElementById('server-url');
+        const exerciseSelect = document.getElementById('exercise-select');
+        const statusDisplay = document.getElementById('status');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const checkBtn = document.getElementById('check-btn');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const logContainer = document.getElementById('log');
+
+        // Variables
+        let isPolling = false;
+        let pollInterval = null;
+        let pollCount = 0;
+        
+        // Set default server URL based on current host
+        serverUrlInput.value = window.location.origin;
+
+        // Log function
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        // Fetch exercises from server
+        async function fetchExercises() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                log(`Fetching exercises from ${serverUrl}/api/exercises`, 'info');
+                
+                const response = await fetch(`${serverUrl}/api/exercises`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const exercises = await response.json();
+                log(`Found ${exercises.length} exercises`, 'success');
+                
+                // Populate exercise select
+                exerciseSelect.innerHTML = '<option value="">-- Select Exercise --</option>';
+                exercises.forEach(exercise => {
+                    const option = document.createElement('option');
+                    option.value = exercise;
+                    option.textContent = exercise;
+                    exerciseSelect.appendChild(option);
+                });
+            } catch (error) {
+                log(`Error fetching exercises: ${error.message}`, 'error');
+            }
+        }
+
+        // Check server connectivity
+        async function checkServer() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                log(`Checking server connectivity: ${serverUrl}`, 'info');
+                
+                // Check basic API endpoint
+                const apiResponse = await fetch(`${serverUrl}/api/exercises`);
+                if (apiResponse.ok) {
+                    const exercises = await apiResponse.json();
+                    log(`API endpoint reachable, found ${exercises.length} exercises`, 'success');
+                } else {
+                    log(`API endpoint returned error: ${apiResponse.status}`, 'error');
+                }
+                
+                // Check Socket.IO config endpoint
+                try {
+                    const configResponse = await fetch(`${serverUrl}/api/socketio-config`);
+                    if (configResponse.ok) {
+                        const config = await configResponse.json();
+                        log(`Socket.IO configuration:`, 'info');
+                        log(`- Version: ${config.version}`, 'info');
+                        log(`- Async mode: ${config.async_mode}`, 'info');
+                        log(`- Server: ${config.server}`, 'info');
+                    } else {
+                        log(`Socket.IO config endpoint returned error: ${configResponse.status}`, 'error');
+                    }
+                } catch (configError) {
+                    log(`Error checking Socket.IO config: ${configError.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Server connectivity error: ${error.message}`, 'error');
+            }
+        }
+
+        // Start polling
+        function startPolling() {
+            const exercise = exerciseSelect.value;
+            if (!exercise) {
+                log('Please select an exercise first', 'error');
+                return;
+            }
+            
+            if (isPolling) {
+                log('Already polling, stop first', 'error');
+                return;
+            }
+            
+            const serverUrl = serverUrlInput.value;
+            log(`Starting HTTP polling for exercise: ${exercise}`, 'info');
+            
+            isPolling = true;
+            pollCount = 0;
+            statusDisplay.textContent = 'Status: Polling';
+            statusDisplay.style.color = 'green';
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            
+            // Start polling at 1-second intervals
+            pollInterval = setInterval(() => {
+                pollExerciseData(exercise);
+            }, 1000);
+        }
+
+        // Poll for exercise data
+        async function pollExerciseData(exercise) {
+            try {
+                const serverUrl = serverUrlInput.value;
+                pollCount++;
+                
+                const response = await fetch(`${serverUrl}/api/long-poll/${exercise}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                log(`Poll #${pollCount}: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                log(`Polling error: ${error.message}`, 'error');
+                if (pollCount > 10) {
+                    log('Too many errors, stopping polling', 'error');
+                    stopPolling();
+                }
+            }
+        }
+
+        // Stop polling
+        function stopPolling() {
+            if (!isPolling) return;
+            
+            log('Stopping HTTP polling', 'info');
+            clearInterval(pollInterval);
+            
+            isPolling = false;
+            statusDisplay.textContent = 'Status: Stopped';
+            statusDisplay.style.color = 'black';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        // Clear log
+        function clearLog() {
+            logContainer.innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startPolling);
+        stopBtn.addEventListener('click', stopPolling);
+        checkBtn.addEventListener('click', checkServer);
+        clearLogBtn.addEventListener('click', clearLog);
+        
+        // Server URL change handler
+        serverUrlInput.addEventListener('change', () => {
+            if (isPolling) {
+                stopPolling();
+            }
+            fetchExercises();
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Page loaded', 'info');
+            fetchExercises();
+        });
+    </script>
+</body>
+</html>

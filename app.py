@@ -43,10 +43,12 @@ except ImportError:
 socketio = SocketIO(
     app, 
     cors_allowed_origins="*",
-    async_mode='gevent',  # Use gevent for Cloud Run
+    async_mode='eventlet',  # Change to eventlet for better Cloud Run compatibility
     ping_timeout=60,      # Longer timeouts for Cloud Run
     ping_interval=25,     # More frequent pings
-    engineio_logger=True  # For debugging, set to False in production
+    engineio_logger=True, # For debugging, set to False in production
+    logger=True,
+    always_connect=True  # Important for Cloud Run
 )
 
 # Setup for async processing
@@ -540,11 +542,61 @@ def socket_diagnostic():
         'environment': os.environ.get('GAE_ENV', 'not-on-app-engine')
     }
 
+@app.route('/api/long-poll/<exercise_id>', methods=['GET'])
+def long_poll_exercise(exercise_id):
+    """Fallback HTTP long polling endpoint for environments where WebSockets don't work"""
+    try:
+        # Simple validation
+        if not exercise_id or exercise_id not in [exercise['id'] for exercise in get_exercises().json]:
+            return jsonify({"error": "Invalid exercise ID"}), 400
+            
+        # Generate a frame
+        frame_data = generate_exercise_frame(exercise_id)
+        
+        return jsonify(frame_data)
+    except Exception as e:
+        print(f"Error in long polling: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+def generate_exercise_frame(exercise_id):
+    """Generate a single exercise frame for long polling"""
+    # This is a simplified version - in a real app, you'd use the same
+    # logic as in your WebSocket code to generate a frame
+    return {
+        "frame": None,  # No frame in test mode
+        "left_counter": 0,
+        "right_counter": 0, 
+        "feedback": "HTTP polling fallback active",
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+
+@app.route('/api/socketio-config')
+def socketio_config():
+    """Detailed diagnostic endpoint for Socket.IO configuration"""
+    config = {
+        "version": socketio.__version__,
+        "async_mode": socketio.async_mode,
+        "cors_allowed_origins": socketio.cors_allowed_origins if hasattr(socketio, 'cors_allowed_origins') else "Not set",
+        "ping_timeout": socketio.ping_timeout if hasattr(socketio, 'ping_timeout') else "Not set",
+        "ping_interval": socketio.ping_interval if hasattr(socketio, 'ping_interval') else "Not set",
+        "handlers": list(socketio.handlers.keys()) if hasattr(socketio, 'handlers') else [],
+        "environment": {
+            "GAE_ENV": os.environ.get('GAE_ENV', 'not-set'),
+            "PORT": os.environ.get('PORT', 'not-set'),
+            "K_SERVICE": os.environ.get('K_SERVICE', 'not-set'),
+            "PYTHONPATH": os.environ.get('PYTHONPATH', 'not-set')
+        },
+        "server": request.headers.get('Host', 'unknown')
+    }
+    return jsonify(config)
+
 @app.after_request
-def after_request(response):
+def add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    # These are critical for WebSocket
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 if __name__ == '__main__':
@@ -571,5 +623,6 @@ if __name__ == '__main__':
         app, 
         host='0.0.0.0', 
         port=port,
-        debug=os.environ.get('DEBUG', 'False').lower() == 'true'
+        debug=os.environ.get('DEBUG', 'False').lower() == 'true',
+        allow_unsafe_werkzeug=True  # Required for eventlet/gevent in newer Flask versions
     )

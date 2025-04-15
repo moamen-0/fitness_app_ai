@@ -19,9 +19,7 @@ aiortc
 protobuf>=3.20.3,<5.0.0
 grpcio>=1.40.0,<2.0.0
 
-
-
 flask-socketio==5.3.5
-eventlet>=0.33.0
+eventlet==0.33.3
 gevent==23.9.1
 gevent-websocket==0.10.1
