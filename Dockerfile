@@ -1,37 +1,23 @@
 FROM python:3.10-slim
 
-# Install system dependencies
+WORKDIR /app
+
+# Install dependencies for OpenCV
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    ffmpeg \
-    python3-dev \
-    build-essential \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /app
+# Copy requirements and install dependencies
+COPY requirements_cloud.txt .
+RUN pip install --no-cache-dir -r requirements_cloud.txt
 
-# Copy requirements file first
-COPY requirements_cloud.txt ./requirements.txt
-RUN pip install -r requirements.txt
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
 # Set environment variables
-ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
-# Expose the port
-EXPOSE 8080
-
-# Use Gunicorn to run the app
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# Run with WebSocket support
+CMD exec gunicorn --bind :$PORT --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app

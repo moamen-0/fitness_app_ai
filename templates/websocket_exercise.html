@@ -205,10 +205,8 @@
             
             // إنشاء اتصال WebSocket
             try {
-                // الاتصال بالخادم (نستخدم نفس عنوان الصفحة الحالية)
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                const wsUrl = `${protocol}//${host}`;
+                // استخدام إعدادات مناسبة للاتصال بخدمة Cloud Run
+                const wsUrl = window.location.origin;
                 
                 console.log(`Connecting to WebSocket at ${wsUrl}`);
                 socket = io(wsUrl, {
