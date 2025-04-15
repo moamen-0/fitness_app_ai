@@ -1,6 +1,3 @@
-#!/bin/bash
-
-# Deploy to Cloud Run with WebSocket support
 gcloud run deploy ai-fitness-trainer \
   --source . \
   --platform managed \
@@ -9,10 +6,4 @@ gcloud run deploy ai-fitness-trainer \
   --session-affinity \
   --use-http2 \
   --min-instances 1 \
-  --cpu 1 \
-  --memory 512Mi \
-  --concurrency 80 \
-  --timeout 300s \
-  --execution-environment gen2 \
-  --port 8080 \
-  --set-env-vars="PYTHONUNBUFFERED=True,DEBUG=False"
+  --timeout 300s

@@ -44,8 +44,10 @@ socketio = SocketIO(
     engineio_logger=True,
     logger=True,
     always_connect=True,
-    http_compression=False,  # Disable compression for HTTP/2 compatibility
-    manage_session=False     # Let Flask handle sessions
+    http_compression=False,
+    manage_session=False,
+    websocket=True,           # Explicitly enable WebSocket transport
+    allow_upgrades=True       # Allow transport upgrades
 )
 
 # Setup for async processing
