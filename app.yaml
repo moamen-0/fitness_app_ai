@@ -1,29 +1,30 @@
-runtime: python39
+runtime: python310
 
-# Use gunicorn middleware for socketio
-entrypoint: gunicorn -b :$PORT --timeout 120 --workers 1 'main:app'
+instance_class: F4
 
-# Use a basic instance class
-instance_class: F2
+entrypoint: gunicorn -b :$PORT -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app
 
 env_variables:
-  PYTHONUNBUFFERED: 'True'
-  DEBUG: 'False'
+  PYTHONUNBUFFERED: "True"
 
 handlers:
-- url: /static
-  static_dir: static
-  secure: always
+  - url: /static
+    static_dir: static
+    secure: always
 
-- url: /.*
-  script: auto
-  secure: always
+  - url: /.*
+    script: auto
+    secure: always
 
-# Enable session affinity for WebSockets
-network:
-  session_affinity: true
-
-# Use automatic scaling with minimal settings
 automatic_scaling:
   min_instances: 1
-  max_instances: 2
+  max_instances: 5
+  min_idle_instances: 1
+  max_idle_instances: 1
+  min_pending_latency: 30ms
+  max_pending_latency: 100ms
+  max_concurrent_requests: 50
+  
+# Add build step to install packages from the cloud-compatible requirements file
+build_env_variables:
+  GOOGLE_ENTRYPOINT: "pip install -r requirements_cloud.txt && gunicorn -b :$PORT -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app"

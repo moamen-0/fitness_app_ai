@@ -33,17 +33,14 @@ from exercises.push_ups import push_ups
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
 
-# Configure Socket.IO with settings optimized for App Engine
+# Modify SocketIO initialization to work with Google Cloud
 socketio = SocketIO(
     app,
+    async_mode='gevent',
     cors_allowed_origins="*",
-    async_mode='eventlet',
-    engineio_logger=True,  # Enable logging for debugging
-    logger=True,
-    ping_interval=int(os.environ.get('SOCKETIO_PING_INTERVAL', 25)),
-    ping_timeout=int(os.environ.get('SOCKETIO_PING_TIMEOUT', 60)),
-    # Force long-polling as first transport for App Engine compatibility
-    transports=['polling', 'websocket']
+    ping_timeout=60,
+    ping_interval=25,
+    engineio_logger=True if app.config['DEBUG'] else False
 )
 
 # Setup for async processing
@@ -85,60 +82,9 @@ exercise_map = {
     'push_ups': push_ups
 }
 
-# Global variables that will be initialized later
-mp_drawing = None
-mp_pose = None
-pose = None
-
-def _setup_global_variables(drawing, pose_lib, pose_instance):
-    """Set up global variables for use in the app"""
-    global mp_drawing, mp_pose, pose
-    mp_drawing = drawing
-    mp_pose = pose_lib
-    pose = pose_instance
-    print("Global mediapipe variables initialized successfully")
-
 @app.route('/')
 def index():
-    try:
-        # Basic health check information
-        health_info = {
-            "status": "ok",
-            "app": "Fitness App",
-            "version": "1.0.0",
-            "environment": os.environ.get('GAE_ENV', 'local'),
-            "instance": os.environ.get('GAE_INSTANCE', 'local')
-        }
-        # Log the health check
-        app.logger.info(f"Health check performed: {health_info}")
-        
-        # Try to render the template with health info
-        try:
-            return render_template('index.html', health_info=health_info)
-        except Exception as template_error:
-            # If template rendering fails, return a simple HTML response
-            app.logger.error(f"Template error: {str(template_error)}")
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head><title>Fitness App</title></head>
-            <body>
-                <h1>Fitness App is Running</h1>
-                <p>Server is operational, but there was an error with the template.</p>
-                <p>Environment: {os.environ.get('GAE_ENV', 'local')}</p>
-                <p>Instance: {os.environ.get('GAE_INSTANCE', 'local')}</p>
-                <p><a href="/websocket_test">WebSocket Test</a></p>
-            </body>
-            </html>
-            """
-    except Exception as e:
-        app.logger.error(f"Error in index route: {str(e)}")
-        # Return a simple text response in case of an error
-        return f"App is running, but encountered an error: {str(e)}", 500
-
-@app.route('/healthz')
-def health_check():
-    return jsonify({"status": "ok", "message": "Service is running"})
+    return render_template('index.html')
 
 @app.route('/static/<path:path>')
 def serve_static(path):
@@ -153,11 +99,22 @@ def direct_exercise(exercise):
         app.logger.error(f"Invalid exercise requested: {exercise}")
         return "Exercise not found", 404
         
-    return render_template('direct_exercise.html', exercise_id=exercise)
+    return render_template('websocket_exercise.html', exercise_id=exercise)
+
+
+
+#===========================test=============================================== 
+
+
+# direct_video_fast.html
 
 @app.route('/fast_video/<exercise>')
 def fast_video(exercise):
-    valid_exercises = list(exercise_map.keys())
+    valid_exercises = [
+        "hummer", "front_raise", "squat", "triceps", "lunges", 
+        "shoulder_press", "plank", "side_lateral_raise", 
+        "triceps_kickback_side", "push_ups"
+    ]
     
     if exercise not in valid_exercises:
         app.logger.error(f"Invalid exercise requested: {exercise}")
@@ -165,9 +122,17 @@ def fast_video(exercise):
         
     return render_template('direct_video_fast.html', exercise_id=exercise)
 
+
+
+# direct_video_debug.html
+
 @app.route('/debug_video/<exercise>')
 def debug_video(exercise):
-    valid_exercises = list(exercise_map.keys())
+    valid_exercises = [
+        "hummer", "front_raise", "squat", "triceps", "lunges", 
+        "shoulder_press", "plank", "side_lateral_raise", 
+        "triceps_kickback_side", "push_ups"
+    ]
     
     if exercise not in valid_exercises:
         app.logger.error(f"Invalid exercise requested: {exercise}")
@@ -175,6 +140,25 @@ def debug_video(exercise):
         
     return render_template('direct_video_debug.html', exercise_id=exercise)
 
+
+
+
+#===========================test=============================================== 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# New endpoint for WebSocket-based exercise viewing
 @app.route('/websocket_exercise/<exercise>')
 def websocket_exercise(exercise):
     valid_exercises = list(exercise_map.keys())
@@ -185,6 +169,7 @@ def websocket_exercise(exercise):
         
     return render_template('websocket_exercise.html', exercise_id=exercise)
 
+# For backward compatibility
 @app.route('/direct_video/<exercise>')
 def direct_video(exercise):
     valid_exercises = list(exercise_map.keys())
@@ -193,7 +178,7 @@ def direct_video(exercise):
         app.logger.error(f"Invalid exercise requested: {exercise}")
         return "Exercise not found", 404
         
-    return render_template('direct_video.html', exercise_id=exercise)
+    return render_template('websocket_exercise.html', exercise_id=exercise)
 
 @app.route('/api/rtc_offer', methods=['POST'])
 def rtc_offer():
@@ -248,12 +233,15 @@ def pose_data():
 def camera_test():
     return render_template('camera_test.html')
 
+# Original MJPEG streaming endpoint for backwards compatibility
 @app.route('/video_feed/<exercise>')
 def video_feed(exercise):
     try:
         if exercise in exercise_map:
+            # Add debug logging
             print(f"Starting video feed for exercise: {exercise}")
             
+            # Add cache control headers
             return Response(
                 exercise_map[exercise](sound), 
                 mimetype='multipart/x-mixed-replace; boundary=frame',
@@ -270,6 +258,8 @@ def video_feed(exercise):
         app.logger.error(traceback.format_exc())
         return "Error processing video", 500
 
+# ====================== WebSocket Event Handlers ======================
+
 @socketio.on('connect')
 def handle_connect():
     print(f"Client connected: {request.sid}")
@@ -278,6 +268,7 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f"Client disconnected: {request.sid}")
+    # Clean up any active session on disconnect
     if request.sid in active_sessions:
         session_data = active_sessions[request.sid]
         if 'stop_event' in session_data:
@@ -290,181 +281,78 @@ def handle_disconnect():
 def handle_start_exercise(data):
     try:
         exercise_id = data.get('exercise_id')
-        client_stream = data.get('client_stream', False)
-        session_id = request.sid
+        print(f"Starting exercise: {exercise_id} for session {request.sid}")
         
-        print(f"Starting exercise {exercise_id} for session {session_id}, client streaming: {client_stream}")
+        if not exercise_id or exercise_id not in exercise_map:
+            emit('error', {'message': f'Invalid exercise: {exercise_id}'})
+            return
         
-        if session_id not in active_sessions:
-            active_sessions[session_id] = {
-                'exercise_id': exercise_id,
-                'left_counter': 0,
-                'right_counter': 0,
-                'client_stream': client_stream,
-                'stop_event': threading.Event(),
-                'last_frame': None,
-                'cap': None
-            }
-        else:
-            active_sessions[session_id]['exercise_id'] = exercise_id
-            active_sessions[session_id]['left_counter'] = 0
-            active_sessions[session_id]['right_counter'] = 0
-            active_sessions[session_id]['client_stream'] = client_stream
-            active_sessions[session_id]['stop_event'].clear()
+        # Stop any currently active session
+        if request.sid in active_sessions:
+            session_data = active_sessions[request.sid]
+            if 'stop_event' in session_data:
+                session_data['stop_event'].set()
+            if 'cap' in session_data and session_data['cap'] is not None:
+                session_data['cap'].release()
         
-        emit('exercise_started', {'status': 'ok', 'exercise_id': exercise_id})
+        # Create a stop event to allow safe termination
+        stop_event = threading.Event()
         
-        if not client_stream:
-            stop_event = active_sessions[session_id]['stop_event']
-            processing_thread = threading.Thread(
-                target=process_exercise_frames,
-                args=(session_id, exercise_id, stop_event)
-            )
-            processing_thread.daemon = True
-            processing_thread.start()
+        # Store session data
+        active_sessions[request.sid] = {
+            'exercise_id': exercise_id,
+            'stop_event': stop_event,
+            'cap': None,
+            'left_counter': 0,
+            'right_counter': 0
+        }
+        
+        # Start a thread to process the exercise
+        exercise_thread = threading.Thread(
+            target=process_exercise_frames,
+            args=(request.sid, exercise_id, stop_event)
+        )
+        exercise_thread.daemon = True
+        exercise_thread.start()
+        
+        emit('exercise_started', {'exercise_id': exercise_id})
+        
     except Exception as e:
-        print(f"Error in handle_start_exercise: {str(e)}")
-        emit('error', {'message': f'Failed to start exercise: {str(e)}'})
-
-@socketio.on('video_frame')
-def handle_video_frame(data):
-    try:
-        session_id = request.sid
-        if session_id not in active_sessions:
-            return
-        
-        frame_b64 = data.get('frame')
-        if not frame_b64:
-            return
-        
-        img_data = base64.b64decode(frame_b64)
-        np_arr = np.frombuffer(img_data, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        
-        if frame is None:
-            print("Invalid frame received")
-            return
-        
-        active_sessions[session_id]['last_frame'] = frame
-        
-        process_client_frame(session_id, frame)
-    except Exception as e:
-        print(f"Error processing video frame: {str(e)}")
+        print(f"Error starting exercise: {str(e)}")
         traceback.print_exc()
+        emit('error', {'message': f'Error starting exercise: {str(e)}'})
 
-def process_client_frame(session_id, frame):
+@socketio.on('stop_exercise')
+def handle_stop_exercise():
     try:
-        if session_id not in active_sessions:
-            return
+        print(f"Stopping exercise for session {request.sid}")
         
-        session_data = active_sessions[session_id]
-        exercise_id = session_data['exercise_id']
-        left_counter = session_data.get('left_counter', 0)
-        right_counter = session_data.get('right_counter', 0)
-        
-        image = frame.copy()
-        
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = pose.process(image_rgb)
-        
-        form_feedback = ""
-        
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(
-                image, 
-                results.pose_landmarks, 
-                mp_pose.POSE_CONNECTIONS,
-                mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=4),
-                mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
-            )
+        if request.sid in active_sessions:
+            session_data = active_sessions[request.sid]
+            if 'stop_event' in session_data:
+                session_data['stop_event'].set()
+            if 'cap' in session_data and session_data['cap'] is not None:
+                session_data['cap'].release()
             
-            landmarks = results.pose_landmarks.landmark
-            
-            arm_sides = {
-                'left': {
-                    'shoulder': mp_pose.PoseLandmark.LEFT_SHOULDER,
-                    'elbow': mp_pose.PoseLandmark.LEFT_ELBOW,
-                    'wrist': mp_pose.PoseLandmark.LEFT_WRIST
-                },
-                'right': {
-                    'shoulder': mp_pose.PoseLandmark.RIGHT_SHOULDER,
-                    'elbow': mp_pose.PoseLandmark.RIGHT_ELBOW,
-                    'wrist': mp_pose.PoseLandmark.RIGHT_WRIST
-                }
-            }
-            
-            for side, joints in arm_sides.items():
-                shoulder = [
-                    landmarks[joints['shoulder'].value].x,
-                    landmarks[joints['shoulder'].value].y,
-                ]
-                elbow = [
-                    landmarks[joints['elbow'].value].x,
-                    landmarks[joints['elbow'].value].y,
-                ]
-                wrist = [
-                    landmarks[joints['wrist'].value].x,
-                    landmarks[joints['wrist'].value].y,
-                ]
-                
-                elbow_angle = calculate_angle(shoulder, elbow, wrist)
-                
-                cv2.putText(
-                    image,
-                    f'{int(elbow_angle)}',
-                    tuple(np.multiply(elbow, [image.shape[1], image.shape[0]]).astype(int)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 255, 255),
-                    2,
-                    cv2.LINE_AA
-                )
-                
-                if exercise_id == 'hummer':
-                    if side == 'left':
-                        if elbow_angle > 160:
-                            if active_sessions[session_id].get('left_state') != 'down':
-                                active_sessions[session_id]['left_state'] = 'down'
-                        if elbow_angle < 30:
-                            if active_sessions[session_id].get('left_state') == 'down':
-                                left_counter += 1
-                                active_sessions[session_id]['left_counter'] = left_counter
-                                active_sessions[session_id]['left_state'] = 'up'
-                                form_feedback = "Good form! Keep going"
-                    else:
-                        if elbow_angle > 160:
-                            if active_sessions[session_id].get('right_state') != 'down':
-                                active_sessions[session_id]['right_state'] = 'down'
-                        if elbow_angle < 30:
-                            if active_sessions[session_id].get('right_state') == 'down':
-                                right_counter += 1
-                                active_sessions[session_id]['right_counter'] = right_counter
-                                active_sessions[session_id]['right_state'] = 'up'
-                                form_feedback = "Good form! Keep going"
-        
-        cv2.putText(image, f'Left: {left_counter}', (10, 50), 
-                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        cv2.putText(image, f'Right: {right_counter}', (10, 100), 
-                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        
-        ret, buffer = cv2.imencode('.jpg', image)
-        frame_data = base64.b64encode(buffer).decode('utf-8')
-        
-        socketio.emit('exercise_frame', {
-            'frame': frame_data,
-            'left_counter': left_counter,
-            'right_counter': right_counter,
-            'feedback': form_feedback
-        }, room=session_id)
+        emit('exercise_stopped')
         
     except Exception as e:
-        print(f"Error in process_client_frame: {str(e)}")
-        traceback.print_exc()
+        print(f"Error stopping exercise: {str(e)}")
+        emit('error', {'message': f'Error stopping exercise: {str(e)}'})
 
 def process_exercise_frames(session_id, exercise_id, stop_event):
+    """
+    Process exercise frames and send them via WebSocket
+    
+    Args:
+        session_id: WebSocket session ID
+        exercise_id: ID of the exercise to track
+        stop_event: Event to signal when to stop processing
+    """
     try:
         print(f"Processing exercise frames for {exercise_id}, session {session_id}")
         
+        # Initialize video capture
         cap = cv2.VideoCapture(0)
         
         if not cap.isOpened():
@@ -472,8 +360,10 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
             socketio.emit('error', {'message': 'Failed to open camera'}, room=session_id)
             return
         
+        # Update session data
         active_sessions[session_id]['cap'] = cap
         
+        # Initial variables
         left_counter = 0
         right_counter = 0
         left_state = None
@@ -485,17 +375,21 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                 print("Failed to capture frame")
                 break
             
+            # Flip the frame horizontally
             frame = cv2.flip(frame, 1)
             
+            # Convert to RGB for mediapipe
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(image)
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             
+            # Exercise variables
             form_feedback = ""
             
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
                 
+                # Draw the pose landmarks
                 mp_drawing.draw_landmarks(
                     image, 
                     results.pose_landmarks, 
@@ -504,6 +398,7 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                     mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
                 )
                 
+                # Define arm landmarks for exercise tracking
                 arm_sides = {
                     'left': {
                         'shoulder': mp_pose.PoseLandmark.LEFT_SHOULDER,
@@ -519,6 +414,7 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                     }
                 }
                 
+                # Track angles and exercise state
                 for side, joints in arm_sides.items():
                     shoulder = [
                         landmarks[joints['shoulder'].value].x,
@@ -533,8 +429,10 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                         landmarks[joints['wrist'].value].y,
                     ]
                     
+                    # Calculate elbow angle
                     elbow_angle = calculate_angle(shoulder, elbow, wrist)
                     
+                    # Display angle on frame
                     cv2.putText(
                         image,
                         f'{int(elbow_angle)}',
@@ -546,6 +444,7 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                         cv2.LINE_AA
                     )
                     
+                    # Exercise specific logic - using hammer curl as an example
                     if exercise_id == 'hummer':
                         if side == 'left':
                             if elbow_angle > 160:
@@ -565,17 +464,23 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                                 print(f'Right Counter: {right_counter}')
                                 form_feedback = "ممتاز! استمر"
                     
+                    # (Add more exercise-specific logic here for other exercises)
+                
+                # Display counters on frame
                 cv2.putText(image, f'Left: {left_counter}', (10, 50), 
                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
                 cv2.putText(image, f'Right: {right_counter}', (10, 100), 
                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
                 
+                # Update session counters
                 active_sessions[session_id]['left_counter'] = left_counter
                 active_sessions[session_id]['right_counter'] = right_counter
-                    
+                
+            # Convert frame to base64 for WebSocket transmission
             ret, buffer = cv2.imencode('.jpg', image)
             frame_data = base64.b64encode(buffer).decode('utf-8')
             
+            # Send frame and data
             socketio.emit('exercise_frame', {
                 'frame': frame_data,
                 'left_counter': left_counter,
@@ -583,65 +488,43 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                 'feedback': form_feedback
             }, room=session_id)
             
-            time.sleep(0.03)
+            # Short delay to reduce CPU usage
+            time.sleep(0.03)  # ~30 fps
         
+        # Clean up camera when done
         if cap.isOpened():
             cap.release()
-            
+        
         print(f"Exercise processing stopped for session {session_id}")
+        
     except Exception as e:
         print(f"Error in process_exercise_frames: {str(e)}")
         traceback.print_exc()
         socketio.emit('error', {'message': f'Error processing exercise: {str(e)}'}, room=session_id)
         
+        # Cleanup
         if session_id in active_sessions:
             session_data = active_sessions[session_id]
             if 'cap' in session_data and session_data['cap'] is not None:
                 session_data['cap'].release()
 
-@app.route('/websocket_test')
-def websocket_test():
-    return render_template('websocket_test.html')
-
-@socketio.on('ping')
-def handle_ping(data):
-    try:
-        print(f"Received ping from client: {data}")
-        emit('pong', {
-            'server_time': time.time(),
-            'message': 'Pong from server',
-            'received_data': data
-        })
-    except Exception as e:
-        print(f"Error in handle_ping: {str(e)}")
-        emit('error', {'message': f'Error handling ping: {str(e)}'})
-
 if __name__ == '__main__':
-    # Only run this for local development
+    # Initialize mediapipe
     try:
-        # Initialize mediapipe locally if running this file directly
         import mediapipe as mp
         print(f"Mediapipe loaded successfully")
         
+        # Initialize pose
         mp_drawing = mp.solutions.drawing_utils
         mp_pose = mp.solutions.pose
         pose = mp_pose.Pose(
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
-            model_complexity=1
+            model_complexity=1  # Medium complexity for balance between performance and accuracy
         )
         print("Pose model initialized successfully")
     except Exception as e:
         print(f"Error initializing libraries: {e}")
     
     port = int(os.environ.get('PORT', 8080))
-    
-    socketio.run(
-        app, 
-        host='0.0.0.0', 
-        port=port,
-        debug=False,
-        use_reloader=False,
-        cors_allowed_origins="*",
-        allow_unsafe_werkzeug=True
-    )
+    socketio.run(app, host='0.0.0.0', port=port)

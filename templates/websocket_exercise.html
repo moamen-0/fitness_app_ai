@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=1024">
     <title>AI Fitness Trainer - {{ exercise_id }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
@@ -30,18 +30,7 @@
             align-items: center;
         }
         
-        #camera-video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            max-height: 90vh;
-            display: block;
-        }
-        
-        #processed-video {
-            position: absolute;
-            top: 0;
-            left: 0;
+        #exercise-video {
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -51,7 +40,7 @@
         
         /* للهواتف في الوضع الرأسي */
         @media (orientation: portrait) and (max-width: 600px) {
-            #camera-video, #processed-video {
+            #exercise-video {
                 width: 100%;
                 height: auto;
                 max-height: 80vh;
@@ -60,7 +49,7 @@
         
         /* للهواتف في الوضع الأفقي */
         @media (orientation: landscape) and (max-height: 500px) {
-            #camera-video, #processed-video {
+            #exercise-video {
                 height: 100%;
                 width: auto;
                 max-width: 95vw;
@@ -147,8 +136,7 @@
 </head>
 <body>
     <div id="video-container">
-        <video id="camera-video" playsinline autoplay muted></video>
-        <img id="processed-video" src="" alt="{{ exercise_id }}">
+        <img id="exercise-video" src="" alt="{{ exercise_id }}">
         
         <div class="info-box">
             <div>تمرين: {{ exercise_id }}</div>
@@ -163,9 +151,6 @@
         <div class="feedback-text" id="feedback-text">ابدأ التمرين</div>
         
         <div class="controls">
-            <button class="control-btn" id="camera-switch-btn" title="تبديل الكاميرا">
-                <i class="bi bi-camera"></i>
-            </button>
             <button class="control-btn" id="start-btn" title="بدء/إيقاف التمرين">
                 <i class="bi bi-play-fill"></i>
             </button>
@@ -181,7 +166,7 @@
             <div class="spinner-border text-primary mb-3" role="status">
                 <span class="visually-hidden">جاري التحميل...</span>
             </div>
-            <p>جاري تشغيل الكاميرا...</p>
+            <p>جاري الاتصال...</p>
         </div>
         
         <div id="error-message" class="d-none">
@@ -191,18 +176,18 @@
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="/static/js/websocket-camera.js"></script>
     <script>
         // متغيرات عامة
         const exerciseId = "{{ exercise_id }}";
         let isFullscreen = false;
         let isExerciseRunning = false;
+        let socket = null;
         
         // عناصر DOM
+        const videoElement = document.getElementById('exercise-video');
         const startBtn = document.getElementById('start-btn');
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         const reloadBtn = document.getElementById('reload-btn');
-        const cameraSwitchBtn = document.getElementById('camera-switch-btn');
         const loadingIndicator = document.getElementById('loading-indicator');
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
@@ -210,120 +195,125 @@
         const leftCounter = document.getElementById('left-counter');
         const rightCounter = document.getElementById('right-counter');
         const feedbackText = document.getElementById('feedback-text');
-        const processedVideo = document.getElementById('processed-video');
+        const retryBtn = document.getElementById('retry-btn');
         
-        // تهيئة اتصال WebSocket والكاميرا
-        async function initializeWebSocketCamera() {
+        // تهيئة اتصال WebSocket
+        function initializeWebSocket() {
             // إظهار مؤشر التحميل
             loadingIndicator.classList.remove('d-none');
             errorMessage.classList.add('d-none');
             
+            // إنشاء اتصال WebSocket
             try {
-                // الحصول على عنوان خادم WebSocket
+                // الاتصال بالخادم (نستخدم نفس عنوان الصفحة الحالية)
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const host = window.location.host;
                 const wsUrl = `${protocol}//${host}`;
                 
                 console.log(`Connecting to WebSocket at ${wsUrl}`);
-                
-                // تهيئة معالج الكاميرا والاتصال
-                const success = await window.wsCamera.initialize(wsUrl, exerciseId, {
-                    videoElement: document.getElementById('camera-video'),
-                    width: 640,
-                    height: 480,
-                    facingMode: 'user' // يمكنك تغيير هذا إلى 'environment' للكاميرا الخلفية
+                socket = io(wsUrl, {
+                    path: '/socket.io',
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 20000
                 });
                 
-                if (!success) {
-                    throw new Error('فشل في تهيئة الكاميرا أو اتصال WebSocket');
-                }
+                // معالجة أحداث الاتصال
+                socket.on('connect', () => {
+                    console.log('Connected to WebSocket server');
+                    connectionStatus.textContent = "متصل";
+                    loadingIndicator.classList.add('d-none');
+                    
+                    // بدء التمرين تلقائياً عند الاتصال
+                    startExercise();
+                });
                 
-                // إضافة مستمعي أحداث Socket.IO
-                setupSocketEvents();
+                socket.on('disconnect', () => {
+                    console.log('Disconnected from WebSocket server');
+                    connectionStatus.textContent = "غير متصل";
+                    stopExercise();
+                });
                 
-                // إخفاء مؤشر التحميل
-                loadingIndicator.classList.add('d-none');
-                connectionStatus.textContent = "متصل";
+                socket.on('connection_status', (data) => {
+                    console.log('Connection status:', data);
+                    if (data.status === 'connected') {
+                        connectionStatus.textContent = "متصل";
+                        loadingIndicator.classList.add('d-none');
+                    }
+                });
+                
+                socket.on('error', (data) => {
+                    console.error('WebSocket error:', data.message);
+                    showError(data.message);
+                });
+                
+                // استقبال إطارات التمرين
+                socket.on('exercise_frame', (data) => {
+                    // تحديث الصورة
+                    if (data.frame) {
+                        videoElement.src = `data:image/jpeg;base64,${data.frame}`;
+                    }
+                    
+                    // تحديث العدادات
+                    if (data.left_counter !== undefined) {
+                        leftCounter.textContent = data.left_counter;
+                    }
+                    
+                    if (data.right_counter !== undefined) {
+                        rightCounter.textContent = data.right_counter;
+                    }
+                    
+                    // تحديث التغذية الراجعة
+                    if (data.feedback) {
+                        feedbackText.textContent = data.feedback;
+                    }
+                });
+                
+                socket.on('exercise_started', (data) => {
+                    console.log('Exercise started:', data);
+                    isExerciseRunning = true;
+                    updateButtonState();
+                });
+                
+                socket.on('exercise_stopped', () => {
+                    console.log('Exercise stopped');
+                    isExerciseRunning = false;
+                    updateButtonState();
+                });
                 
             } catch (error) {
-                console.error('Error initializing WebSocket camera:', error);
-                showError('حدث خطأ في تشغيل الكاميرا أو الاتصال بالخادم');
+                console.error('Error initializing WebSocket:', error);
+                showError('حدث خطأ في الاتصال بالخادم');
             }
-        }
-        
-        // إعداد أحداث Socket.IO
-        function setupSocketEvents() {
-            const socket = window.wsCamera.socket;
-            
-            socket.on('connect', () => {
-                console.log('Connected to WebSocket server');
-                connectionStatus.textContent = "متصل";
-                loadingIndicator.classList.add('d-none');
-            });
-            
-            socket.on('disconnect', () => {
-                console.log('Disconnected from WebSocket server');
-                connectionStatus.textContent = "غير متصل";
-                stopExercise();
-            });
-            
-            socket.on('error', (data) => {
-                console.error('WebSocket error:', data.message);
-                showError(data.message);
-            });
-            
-            // استقبال إطارات التمرين المعالجة
-            socket.on('exercise_frame', (data) => {
-                // تحديث الصورة المعالجة
-                if (data.frame) {
-                    processedVideo.src = `data:image/jpeg;base64,${data.frame}`;
-                }
-                
-                // تحديث العدادات
-                if (data.left_counter !== undefined) {
-                    leftCounter.textContent = data.left_counter;
-                }
-                
-                if (data.right_counter !== undefined) {
-                    rightCounter.textContent = data.right_counter;
-                }
-                
-                // تحديث التغذية الراجعة
-                if (data.feedback) {
-                    feedbackText.textContent = data.feedback;
-                }
-            });
-            
-            socket.on('exercise_started', (data) => {
-                console.log('Exercise started:', data);
-                isExerciseRunning = true;
-                updateButtonState();
-            });
-            
-            socket.on('exercise_stopped', () => {
-                console.log('Exercise stopped');
-                isExerciseRunning = false;
-                updateButtonState();
-            });
         }
         
         // بدء التمرين
         function startExercise() {
-            if (!window.wsCamera) {
-                showError('معالج الكاميرا غير متاح');
-                return;
+            if (socket && socket.connected) {
+                loadingIndicator.classList.remove('d-none');
+                
+                // إرسال طلب بدء التمرين
+                socket.emit('start_exercise', { exercise_id: exerciseId });
+                
+                // تحديث حالة التطبيق
+                isExerciseRunning = true;
+                updateButtonState();
+            } else {
+                showError('WebSocket غير متصل');
             }
-            
-            window.wsCamera.startStreaming();
-            isExerciseRunning = true;
-            updateButtonState();
         }
         
         // إيقاف التمرين
         function stopExercise() {
-            if (!window.wsCamera) return;
+            if (socket && socket.connected) {
+                // إرسال طلب إيقاف التمرين
+                socket.emit('stop_exercise');
+            }
             
-            window.wsCamera.stopStreaming();
+            // تحديث حالة التطبيق
             isExerciseRunning = false;
             updateButtonState();
             
@@ -373,18 +363,6 @@
             location.reload();
         }
         
-        // تبديل الكاميرا الأمامية/الخلفية
-        async function switchCamera() {
-            try {
-                if (window.wsCamera) {
-                    await window.wsCamera.switchCamera();
-                }
-            } catch (error) {
-                console.error('Error switching camera:', error);
-                showError('فشل في تبديل الكاميرا');
-            }
-        }
-        
         // إضافة مستمعي الأحداث
         startBtn.addEventListener('click', () => {
             if (isExerciseRunning) {
@@ -396,24 +374,17 @@
         
         fullscreenBtn.addEventListener('click', toggleFullscreen);
         reloadBtn.addEventListener('click', reloadPage);
-        retryBtn.addEventListener('click', initializeWebSocketCamera);
-        cameraSwitchBtn.addEventListener('click', switchCamera);
+        retryBtn.addEventListener('click', initializeWebSocket);
         
         // تهيئة عند تحميل الصفحة
         document.addEventListener('DOMContentLoaded', () => {
-            // إخفاء زر تبديل الكاميرا إذا لم تكن مدعومة
-            if (!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)) {
-                cameraSwitchBtn.style.display = 'none';
-            }
-            
-            initializeWebSocketCamera();
+            initializeWebSocket();
         });
         
         // معالجة أحداث تغيير رؤية الصفحة
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && window.wsCamera && 
-                window.wsCamera.socket && !window.wsCamera.socket.connected) {
-                initializeWebSocketCamera();
+            if (document.visibilityState === 'visible' && socket && !socket.connected) {
+                initializeWebSocket();
             }
         });
         
@@ -427,27 +398,17 @@
         function adjustVideoSize() {
             const width = window.innerWidth;
             const height = window.innerHeight;
-            const cameraVideo = document.getElementById('camera-video');
-            const processedVideo = document.getElementById('processed-video');
             
             if (width < height) {
                 // وضع عمودي (portrait)
-                cameraVideo.style.width = '100%';
-                cameraVideo.style.height = 'auto';
-                cameraVideo.style.maxHeight = '80vh';
-                
-                processedVideo.style.width = '100%';
-                processedVideo.style.height = 'auto';
-                processedVideo.style.maxHeight = '80vh';
+                videoElement.style.width = '100%';
+                videoElement.style.height = 'auto';
+                videoElement.style.maxHeight = '80vh';
             } else {
                 // وضع أفقي (landscape)
-                cameraVideo.style.height = '100%';
-                cameraVideo.style.width = 'auto';
-                cameraVideo.style.maxWidth = '95vw';
-                
-                processedVideo.style.height = '100%';
-                processedVideo.style.width = 'auto';
-                processedVideo.style.maxWidth = '95vw';
+                videoElement.style.height = '100%';
+                videoElement.style.width = 'auto';
+                videoElement.style.maxWidth = '95vw';
             }
         }
         

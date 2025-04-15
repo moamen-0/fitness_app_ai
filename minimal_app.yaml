@@ -1,8 +1,0 @@
-runtime: python39
-entrypoint: gunicorn -b :$PORT minimal_test:app
-
-instance_class: F1
-
-automatic_scaling:
-  min_instances: 1
-  max_instances: 1
