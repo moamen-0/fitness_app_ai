@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1024">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Fitness Trainer - {{ exercise_id }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
@@ -205,19 +205,13 @@
             
             // إنشاء اتصال WebSocket
             try {
-                // استخدام إعدادات مناسبة للاتصال بخدمة Cloud Run
-                const wsUrl = window.location.origin;
+                // الاتصال بالخادم (نستخدم نفس عنوان الصفحة الحالية)
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                const wsUrl = `${protocol}//${host}`;
                 
                 console.log(`Connecting to WebSocket at ${wsUrl}`);
-                socket = io(wsUrl, {
-                    path: '/socket.io',
-                    transports: ['websocket', 'polling'],
-                    reconnection: true,
-                    reconnectionAttempts: 5,
-                    reconnectionDelay: 1000,
-                    reconnectionDelayMax: 5000,
-                    timeout: 20000
-                });
+                socket = io(wsUrl);
                 
                 // معالجة أحداث الاتصال
                 socket.on('connect', () => {

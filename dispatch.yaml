@@ -1,8 +1,0 @@
-dispatch:
-  # Route websocket connections to your service
-  - url: "*/socket.io/*"
-    service: default
-    
-  # Route all other traffic to your service
-  - url: "*/*"
-    service: default

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket.IO Test</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Socket.IO Connection Test</h1>
+    <div id="status">Disconnected</div>
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <pre id="log"></pre>
+
+    <script>
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        const connectBtn = document.getElementById('connect');
+        const disconnectBtn = document.getElementById('disconnect');
+        
+        function appendLog(message) {
+            log.textContent += message + '\n';
+        }
+        
+        connectBtn.addEventListener('click', () => {
+            appendLog('Connecting to server...');
+            
+            // Use your Cloud Run URL here
+            const socket = io('https://ai-fitness-trainer-359385368046.us-central1.run.app', {
+                transports: ['websocket', 'polling'],
+                upgrade: true,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                timeout: 20000
+            });
+            
+            window.socket = socket;
+            
+            socket.on('connect', () => {
+                appendLog('Connected!');
+                status.textContent = 'Connected';
+                status.style.color = 'green';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            });
+            
+            socket.on('disconnect', () => {
+                appendLog('Disconnected');
+                status.textContent = 'Disconnected';
+                status.style.color = 'red';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            });
+            
+            socket.on('connect_error', (error) => {
+                appendLog(`Connection error: ${error.message}`);
+            });
+            
+            socket.on('error', (error) => {
+                appendLog(`Socket error: ${error}`);
+            });
+        });
+        
+        disconnectBtn.addEventListener('click', () => {
+            if (window.socket) {
+                window.socket.disconnect();
+                window.socket = null;
+                appendLog('Manually disconnected');
+            }
+        });
+    </script>
+</body>
+</html>

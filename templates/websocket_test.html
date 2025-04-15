@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>اختبار WebSocket</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f4f6f9;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            max-width: 1000px;
+            padding: 20px;
+        }
+        
+        .card {
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        #video-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        #exercise-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .connection-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 10;
+        }
+        
+        .rep-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 10;
+        }
+        
+        .feedback-text {
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            font-size: 16px;
+            z-index: 10;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .log-container {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #1e1e1e;
+            color: #ddd;
+            padding: 10px;
+            font-family: Consolas, monospace;
+            font-size: 14px;
+            border-radius: 5px;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+        
+        .log-info {
+            color: #8cdcfe;
+        }
+        
+        .log-success {
+            color: #6a9955;
+        }
+        
+        .log-error {
+            color: #f14c4c;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+        
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">اختبار اتصال WebSocket</h1>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">إعدادات الاتصال</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="server-url" class="form-label">رابط الخادم</label>
+                    <input type="text" class="form-control" id="server-url" value="https://ai-fitness-trainer-359385368046.us-central1.run.app">
+                </div>
+                
+                <div class="mb-3">
+                    <label for="exercise-select" class="form-label">اختر التمرين</label>
+                    <select class="form-select" id="exercise-select">
+                        <option value="">-- اختر تمرين --</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <button id="connect-btn" class="btn btn-success">
+                        <i class="bi bi-plug-fill"></i> اتصال
+                    </button>
+                    <button id="disconnect-btn" class="btn btn-danger" disabled>
+                        <i class="bi bi-plug"></i> قطع الاتصال
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">التمرين</h5>
+            </div>
+            <div class="card-body">
+                <div id="video-container">
+                    <img id="exercise-video" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Exercise Video">
+                    
+                    <div class="connection-info">
+                        <div id="connection-status">غير متصل</div>
+                        <div id="exercise-name"></div>
+                    </div>
+                    
+                    <div class="rep-counter">
+                        <div>يمين: <span id="right-counter">0</span></div>
+                        <div>يسار: <span id="left-counter">0</span></div>
+                    </div>
+                    
+                    <div class="feedback-text" id="feedback-text">اختر تمرين واتصل بالخادم</div>
+                    
+                    <div class="loading-overlay" id="loading-overlay">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">جاري التحميل...</span>
+                        </div>
+                        <p class="text-white" id="loading-text">جاري التحميل...</p>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button id="start-btn" class="btn btn-primary" disabled>
+                        <i class="bi bi-play-fill"></i> بدء التمرين
+                    </button>
+                    <button id="stop-btn" class="btn btn-danger" disabled>
+                        <i class="bi bi-stop-fill"></i> إيقاف التمرين
+                    </button>
+                    <button id="fullscreen-btn" class="btn btn-secondary">
+                        <i class="bi bi-fullscreen"></i> ملء الشاشة
+                    </button>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header bg-dark text-white">
+                        <h6 class="mb-0">سجل الأحداث</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="log-container" id="log-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // DOM Elements
+        const serverUrlInput = document.getElementById('server-url');
+        const exerciseSelect = document.getElementById('exercise-select');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const videoElement = document.getElementById('exercise-video');
+        const videoContainer = document.getElementById('video-container');
+        const connectionStatus = document.getElementById('connection-status');
+        const exerciseName = document.getElementById('exercise-name');
+        const rightCounter = document.getElementById('right-counter');
+        const leftCounter = document.getElementById('left-counter');
+        const feedbackText = document.getElementById('feedback-text');
+        const logContainer = document.getElementById('log-container');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+
+        // Variables
+        let socket = null;
+        let isExerciseRunning = false;
+        let exerciseId = null;
+        
+        // Log functions
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+        
+        // Show/hide loading
+        function showLoading(message = 'جاري التحميل...') {
+            loadingText.textContent = message;
+            loadingOverlay.style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            loadingOverlay.style.display = 'none';
+        }
+        
+        // Fetch exercises with better error handling
+        async function fetchExercises() {
+            showLoading('جاري تحميل التمارين...');
+            try {
+                const serverUrl = serverUrlInput.value;
+                
+                // Test base server connectivity first
+                const isServerAvailable = await testServerConnectivity();
+                if (!isServerAvailable) {
+                    log('تحذير: قد يكون الخادم غير متاح، ولكن سيتم محاولة تحميل التمارين على أي حال', 'info');
+                }
+                
+                // Try with longer timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                
+                const response = await fetch(`${serverUrl}/api/exercises`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const exercises = await response.json();
+                log(`تم تحميل ${exercises.length} تمرين`, 'success');
+                
+                // Clear and populate exercise select
+                exerciseSelect.innerHTML = '<option value="">-- اختر تمرين --</option>';
+                
+                exercises.forEach(exercise => {
+                    const option = document.createElement('option');
+                    option.value = exercise;
+                    option.textContent = exercise;
+                    exerciseSelect.appendChild(option);
+                });
+                
+                hideLoading();
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    log('تجاوز وقت تحميل التمارين', 'error');
+                } else {
+                    log(`خطأ في تحميل التمارين: ${error.message}`, 'error');
+                }
+                hideLoading();
+            }
+        }
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            exerciseId = exerciseSelect.value;
+            
+            if (!exerciseId) {
+                log('الرجاء اختيار تمرين أولاً', 'error');
+                return;
+            }
+            
+            showLoading('جاري الاتصال بالخادم...');
+            
+            try {
+                const serverUrl = serverUrlInput.value;
+                log(`محاولة الاتصال بـ ${serverUrl}`, 'info');
+                
+                // Disconnect existing connection if any
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+                
+                // Create Socket.IO connection with improved settings
+                socket = io(serverUrl, {
+                    transports: ['websocket', 'polling'], // Try both transport methods
+                    upgrade: true,
+                    reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    timeout: 20000, // Increase timeout to 20 seconds
+                    forceNew: true,
+                    query: {
+                        exercise_id: exerciseId // Send exercise ID as a query parameter
+                    }
+                });
+                
+                // Add timeout handler
+                const connectionTimeout = setTimeout(() => {
+                    if (socket && !socket.connected) {
+                        log('تجاوز وقت الاتصال - محاولة الاتصال بطريقة بديلة...', 'error');
+                        // Try connecting with polling transport
+                        socket.disconnect();
+                        connectWithPolling();
+                    }
+                }, 10000); // 10 second timeout
+                
+                // Socket event handlers
+                socket.on('connect', () => {
+                    clearTimeout(connectionTimeout);
+                    log('تم الاتصال بالخادم بنجاح', 'success');
+                    connectionStatus.textContent = 'متصل';
+                    exerciseName.textContent = exerciseId;
+                    
+                    // Update UI
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    startBtn.disabled = false;
+                    
+                    hideLoading();
+                });
+                
+                socket.on('disconnect', () => {
+                    log('انقطع الاتصال بالخادم', 'error');
+                    connectionStatus.textContent = 'غير متصل';
+                    
+                    // Update UI
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    
+                    isExerciseRunning = false;
+                });
+                
+                socket.on('connect_error', (error) => {
+                    log(`خطأ في الاتصال: ${error.message}`, 'error');
+                    log('جاري محاولة إعادة الاتصال تلقائياً...', 'info');
+                    hideLoading();
+                });
+
+                // Add new event for connection timeout
+                socket.on('connect_timeout', () => {
+                    log('تجاوز وقت الاتصال', 'error');
+                    hideLoading();
+                });
+                
+                // Add reconnect events
+                socket.io.on('reconnect_attempt', (attempt) => {
+                    log(`محاولة إعادة الاتصال ${attempt}...`, 'info');
+                });
+                
+                socket.io.on('reconnect', () => {
+                    log('تمت إعادة الاتصال بنجاح', 'success');
+                });
+                
+                socket.io.on('reconnect_failed', () => {
+                    log('فشلت جميع محاولات إعادة الاتصال', 'error');
+                    log('يرجى التحقق من حالة الخادم أو تغيير عنوان URL', 'info');
+                });
+                
+                socket.on('connection_status', (data) => {
+                    log(`حالة الاتصال: ${JSON.stringify(data)}`, 'info');
+                });
+                
+                socket.on('error', (data) => {
+                    log(`خطأ من الخادم: ${data.message}`, 'error');
+                    feedbackText.textContent = `خطأ: ${data.message}`;
+                    hideLoading();
+                });
+                
+                socket.on('exercise_frame', (data) => {
+                    // Update image
+                    if (data.frame) {
+                        videoElement.src = `data:image/jpeg;base64,${data.frame}`;
+                    }
+                    
+                    // Update counters
+                    if (data.left_counter !== undefined) {
+                        leftCounter.textContent = data.left_counter;
+                    }
+                    
+                    if (data.right_counter !== undefined) {
+                        rightCounter.textContent = data.right_counter;
+                    }
+                    
+                    // Update feedback
+                    if (data.feedback) {
+                        feedbackText.textContent = data.feedback;
+                    }
+                });
+                
+                socket.on('exercise_started', (data) => {
+                    log(`بدأ التمرين: ${JSON.stringify(data)}`, 'success');
+                    isExerciseRunning = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                });
+                
+                socket.on('exercise_stopped', () => {
+                    log('توقف التمرين', 'info');
+                    isExerciseRunning = false;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                });
+                
+            } catch (error) {
+                log(`خطأ في إعداد WebSocket: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+        
+        // Try connecting with polling transport as fallback
+        function connectWithPolling() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                log('محاولة الاتصال باستخدام طريقة polling...', 'info');
+                
+                socket = io(serverUrl, {
+                    transports: ['polling'],
+                    upgrade: false,
+                    reconnection: true,
+                    reconnectionAttempts: 3,
+                    timeout: 30000,
+                    query: {
+                        exercise_id: exerciseId
+                    }
+                });
+                
+                // Setup the same event handlers as before
+                // This is handled by the existing socket event handlers
+            } catch (error) {
+                log(`فشل الاتصال باستخدام polling: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+        
+        // Test server connectivity before WebSocket connection
+        async function testServerConnectivity() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                log(`اختبار الاتصال بالخادم ${serverUrl}...`, 'info');
+                
+                const response = await fetch(`${serverUrl}/api/exercises`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    timeout: 5000
+                });
+                
+                if (response.ok) {
+                    log('الخادم متاح ويستجيب', 'success');
+                    return true;
+                } else {
+                    log(`الخادم متصل ولكن استجاب بحالة: ${response.status}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`تعذر الاتصال بالخادم: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        // Disconnect WebSocket
+        function disconnectWebSocket() {
+            if (socket) {
+                if (isExerciseRunning) {
+                    socket.emit('stop_exercise');
+                }
+                
+                socket.disconnect();
+                socket = null;
+                
+                // Update UI
+                connectionStatus.textContent = 'غير متصل';
+                exerciseName.textContent = '';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+                
+                // Reset counters
+                rightCounter.textContent = '0';
+                leftCounter.textContent = '0';
+                feedbackText.textContent = 'اختر تمرين واتصل بالخادم';
+                
+                log('تم قطع الاتصال بالخادم', 'info');
+            }
+        }
+        
+        // Start exercise
+        function startExercise() {
+            if (!socket || !socket.connected) {
+                log('يجب الاتصال بالخادم أولاً', 'error');
+                return;
+            }
+            
+            showLoading('جاري بدء التمرين...');
+            log(`بدء التمرين: ${exerciseId}`, 'info');
+            
+            // Send start exercise request
+            socket.emit('start_exercise', { exercise_id: exerciseId });
+        }
+        
+        // Stop exercise
+        function stopExercise() {
+            if (!socket || !socket.connected) return;
+            
+            log('إيقاف التمرين', 'info');
+            
+            // Send stop exercise request
+            socket.emit('stop_exercise');
+        }
+        
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                videoContainer.requestFullscreen().catch(err => {
+                    log(`خطأ في تفعيل ملء الشاشة: ${err.message}`, 'error');
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', async () => {
+            const isServerAvailable = await testServerConnectivity();
+            if (isServerAvailable) {
+                connectWebSocket();
+            } else {
+                log('الخادم غير متاح، يرجى التحقق من الاتصال أو عنوان URL', 'error');
+            }
+        });
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        startBtn.addEventListener('click', startExercise);
+        stopBtn.addEventListener('click', stopExercise);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        
+        // Prevent screen from turning off
+        async function preventScreenLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    const wakeLock = await navigator.wakeLock.request('screen');
+                    log('تم تفعيل منع إغلاق الشاشة', 'success');
+                    
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.visibilityState === 'visible' && !wakeLock) {
+                            await navigator.wakeLock.request('screen');
+                        }
+                    });
+                }
+            } catch (err) {
+                log(`خطأ في منع إغلاق الشاشة: ${err.message}`, 'error');
+            }
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            log('تم تحميل الصفحة', 'info');
+            hideLoading();
+            fetchExercises();
+            preventScreenLock();
+            
+            // Add display for current server URL in UI for clarity
+            const serverInfo = document.createElement('div');
+            serverInfo.className = 'alert alert-info mt-2';
+            serverInfo.textContent = `الخادم الحالي: ${serverUrlInput.value}`;
+            serverUrlInput.parentNode.appendChild(serverInfo);
+            
+            // Update server info when URL changes
+            serverUrlInput.addEventListener('change', () => {
+                serverInfo.textContent = `الخادم الحالي: ${serverUrlInput.value}`;
+            });
+        });
+    </script>
+</body>
+</html>

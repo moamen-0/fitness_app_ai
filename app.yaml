@@ -2,7 +2,7 @@ runtime: python310
 
 instance_class: F4
 
-entrypoint: gunicorn -b :$PORT -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app
+entrypoint: gunicorn -b :$PORT app:app
 
 env_variables:
   PYTHONUNBUFFERED: "True"
@@ -27,4 +27,4 @@ automatic_scaling:
   
 # Add build step to install packages from the cloud-compatible requirements file
 build_env_variables:
-  GOOGLE_ENTRYPOINT: "pip install -r requirements_cloud.txt && gunicorn -b :$PORT -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app"
+  GOOGLE_ENTRYPOINT: "pip install -r requirements_cloud.txt && gunicorn -b :$PORT app:app"

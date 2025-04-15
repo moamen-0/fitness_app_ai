@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory, redirect, url_for
+from flask import Flask, Response, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 import cv2
 import os
@@ -13,6 +13,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import threading
+import datetime
 
 # Import WebRTC processing
 from rtc_video_server import process_offer
@@ -32,15 +33,13 @@ from exercises.push_ups import push_ups
 
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
-
-# Update SocketIO configuration for Cloud Run
 socketio = SocketIO(
-    app,
+    app, 
+    cors_allowed_origins="*",  # Or specify your exact origins for production
     async_mode='gevent',
-    cors_allowed_origins="*",
-    path='/socket.io',
-    manage_session=False,
-    engineio_logger=True if app.config.get('DEBUG', False) else False
+    ping_timeout=30,
+    ping_interval=15,
+    engineio_logger=True  # Set to False in production
 )
 
 # Setup for async processing
@@ -84,17 +83,7 @@ exercise_map = {
 
 @app.route('/')
 def index():
-    """Redirect root path to home."""
-    return redirect(url_for('home'))
-
-@app.route('/home')
-def home():
-    """Home page."""
     return render_template('index.html')
-
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
 
 @app.route('/static/<path:path>')
 def serve_static(path):
@@ -110,6 +99,63 @@ def direct_exercise(exercise):
         return "Exercise not found", 404
         
     return render_template('websocket_exercise.html', exercise_id=exercise)
+
+
+
+#===========================test=============================================== 
+
+
+# direct_video_fast.html
+
+@app.route('/fast_video/<exercise>')
+def fast_video(exercise):
+    valid_exercises = [
+        "hummer", "front_raise", "squat", "triceps", "lunges", 
+        "shoulder_press", "plank", "side_lateral_raise", 
+        "triceps_kickback_side", "push_ups"
+    ]
+    
+    if exercise not in valid_exercises:
+        app.logger.error(f"Invalid exercise requested: {exercise}")
+        return "Exercise not found", 404
+        
+    return render_template('direct_video_fast.html', exercise_id=exercise)
+
+
+
+# direct_video_debug.html
+
+@app.route('/debug_video/<exercise>')
+def debug_video(exercise):
+    valid_exercises = [
+        "hummer", "front_raise", "squat", "triceps", "lunges", 
+        "shoulder_press", "plank", "side_lateral_raise", 
+        "triceps_kickback_side", "push_ups"
+    ]
+    
+    if exercise not in valid_exercises:
+        app.logger.error(f"Invalid exercise requested: {exercise}")
+        return "Exercise not found", 404
+        
+    return render_template('direct_video_debug.html', exercise_id=exercise)
+
+
+
+
+#===========================test=============================================== 
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # New endpoint for WebSocket-based exercise viewing
 @app.route('/websocket_exercise/<exercise>')
@@ -211,14 +257,6 @@ def video_feed(exercise):
         app.logger.error(traceback.format_exc())
         return "Error processing video", 500
 
-# Configure CORS headers
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
-
 # ====================== WebSocket Event Handlers ======================
 
 @socketio.on('connect')
@@ -247,7 +285,7 @@ def handle_start_exercise(data):
         if not exercise_id or exercise_id not in exercise_map:
             emit('error', {'message': f'Invalid exercise: {exercise_id}'})
             return
-            
+        
         # Stop any currently active session
         if request.sid in active_sessions:
             session_data = active_sessions[request.sid]
@@ -277,6 +315,7 @@ def handle_start_exercise(data):
         exercise_thread.start()
         
         emit('exercise_started', {'exercise_id': exercise_id})
+        
     except Exception as e:
         print(f"Error starting exercise: {str(e)}")
         traceback.print_exc()
@@ -295,6 +334,7 @@ def handle_stop_exercise():
                 session_data['cap'].release()
             
         emit('exercise_stopped')
+        
     except Exception as e:
         print(f"Error stopping exercise: {str(e)}")
         emit('error', {'message': f'Error stopping exercise: {str(e)}'})
@@ -422,6 +462,8 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                                 right_counter += 1
                                 print(f'Right Counter: {right_counter}')
                                 form_feedback = "ممتاز! استمر"
+                    
+                    # (Add more exercise-specific logic here for other exercises)
                 
                 # Display counters on frame
                 cv2.putText(image, f'Left: {left_counter}', (10, 50), 
@@ -432,7 +474,7 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
                 # Update session counters
                 active_sessions[session_id]['left_counter'] = left_counter
                 active_sessions[session_id]['right_counter'] = right_counter
-            
+                
             # Convert frame to base64 for WebSocket transmission
             ret, buffer = cv2.imencode('.jpg', image)
             frame_data = base64.b64encode(buffer).decode('utf-8')
@@ -465,6 +507,21 @@ def process_exercise_frames(session_id, exercise_id, stop_event):
             if 'cap' in session_data and session_data['cap'] is not None:
                 session_data['cap'].release()
 
+@app.route('/socket-health')
+def socket_health():
+    return {
+        'status': 'online',
+        'socketio_version': socketio.__version__,
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
 if __name__ == '__main__':
     # Initialize mediapipe
     try:
@@ -484,4 +541,9 @@ if __name__ == '__main__':
         print(f"Error initializing libraries: {e}")
     
     port = int(os.environ.get('PORT', 8080))
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(
+        app, 
+        host='0.0.0.0', 
+        port=port,
+        debug=False  # Set to False in production
+    )
