@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Fitness Trainer - {{ exercise_id }}</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            touch-action: manipulation;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #exercise-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-height: 90vh;
+            display: block;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            z-index: 20;
+        }
+        
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .info-box {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            z-index: 5;
+        }
+        
+        #status-message {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 30;
+            text-align: center;
+        }
+        
+        #image-debug {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <img id="exercise-video" alt="{{ exercise_id }}" 
+             onerror="handleImageError()" 
+             onload="handleImageLoaded()">
+        
+        <div class="info-box">
+            <div>تمرين: {{ exercise_id }}</div>
+            <div id="connection-status">جاري التحميل...</div>
+        </div>
+        
+        <div id="status-message">جاري التحميل...</div>
+        
+        <div class="controls">
+            <button class="control-btn" id="fullscreen-btn" title="ملء الشاشة">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+            </button>
+            <button class="control-btn" id="reload-btn" title="إعادة تحميل">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // عناصر DOM
+        const videoElement = document.getElementById('exercise-video');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const reloadBtn = document.getElementById('reload-btn');
+        const statusMessage = document.getElementById('status-message');
+        const connectionStatus = document.getElementById('connection-status');
+        
+        let isFullscreen = false;
+        let loadAttempts = 0;
+        const maxAttempts = 3;
+        
+        // تهيئة المسار
+        function initVideoSource() {
+            // عرض رسالة التحميل
+            statusMessage.textContent = "جاري تحميل التمرين...";
+            statusMessage.style.display = "block";
+            
+            // إضافة طابع زمني لتجنب التخزين المؤقت
+            const timestamp = new Date().getTime();
+            const videoUrl = `/video_feed/{{ exercise_id }}?t=${timestamp}`;
+            
+            console.log(`تحميل الفيديو من: ${videoUrl}`);
+            videoElement.src = videoUrl;
+            
+            // للتشخيص: إضافة تفاصيل عن المصدر
+            if (!document.getElementById('image-debug')) {
+                const debugInfo = document.createElement('div');
+                debugInfo.id = 'image-debug';
+                debugInfo.innerHTML = `مسار الصورة: ${videoUrl}<br>عدد المحاولات: ${loadAttempts + 1}/${maxAttempts}`;
+                statusMessage.appendChild(debugInfo);
+            } else {
+                document.getElementById('image-debug').innerHTML = 
+                    `مسار الصورة: ${videoUrl}<br>عدد المحاولات: ${loadAttempts + 1}/${maxAttempts}`;
+            }
+        }
+        
+        // معالجة خطأ تحميل الصورة
+        function handleImageError() {
+            console.error("فشل تحميل الصورة");
+            loadAttempts++;
+            
+            if (loadAttempts < maxAttempts) {
+                // محاولة أخرى بعد ثانية واحدة
+                statusMessage.textContent = `فشل التحميل... محاولة جديدة (${loadAttempts + 1}/${maxAttempts})`;
+                setTimeout(initVideoSource, 1000);
+            } else {
+                // فشلت جميع المحاولات
+                statusMessage.innerHTML = "تعذر تحميل التمرين.<br>تأكد من الاتصال بالإنترنت والسماحيات.<br><button onclick='resetAndRetry()' style='margin-top:10px; padding:5px 10px; background:#4285f4; border:none; color:white; border-radius:4px;'>إعادة المحاولة</button>";
+                connectionStatus.textContent = "فشل الاتصال";
+            }
+        }
+        
+        // معالجة نجاح تحميل الصورة
+        function handleImageLoaded() {
+            console.log("تم تحميل الصورة بنجاح");
+            statusMessage.style.display = "none";
+            connectionStatus.textContent = "متصل";
+            
+            // بدء تحديث الصورة دوريًا
+            startPeriodicRefresh();
+        }
+        
+        // إعادة ضبط العداد وإعادة المحاولة
+        function resetAndRetry() {
+            loadAttempts = 0;
+            initVideoSource();
+        }
+        
+        // بدء تحديث دوري للصورة
+        let refreshInterval;
+        function startPeriodicRefresh() {
+            // إيقاف أي مؤقت سابق
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            
+            // تحديث الصورة كل 5 ثوانٍ للحفاظ على الاتصال
+            refreshInterval = setInterval(() => {
+                if (document.visibilityState === 'visible') {
+                    const timestamp = new Date().getTime();
+                    videoElement.src = `/video_feed/{{ exercise_id }}?t=${timestamp}`;
+                }
+            }, 5000);
+        }
+        
+        // تبديل وضع ملء الشاشة
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+                isFullscreen = true;
+                fullscreenBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path></svg>';
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    isFullscreen = false;
+                    fullscreenBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>';
+                }
+            }
+        }
+        
+        // منع الشاشة من الإيقاف التلقائي (للأجهزة المدعومة)
+        async function preventScreenLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    const wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock is active');
+                    
+                    // تجديد قفل الشاشة عند تغيير رؤية الصفحة
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.visibilityState === 'visible' && wakeLock === null) {
+                            await navigator.wakeLock.request('screen');
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error(`Error requesting Wake Lock: ${err.message}`);
+            }
+        }
+        
+        // إضافة مستمعي الأحداث
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        reloadBtn.addEventListener('click', resetAndRetry);
+        
+        // تنفيذ الوظائف عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            preventScreenLock();
+            initVideoSource();
+        });
+        
+        // إعادة تحميل الفيديو عند العودة إلى التبويب
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                resetAndRetry();
+            }
+        });
+    </script>
+</body>
+</html>

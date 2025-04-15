@@ -1,0 +1,703 @@
+<!-- <!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fitness Trainer - {{ exercise_id }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        #webrtc-video, img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        #exercise-info {
+            margin-top: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #loading-indicator, #error-message, #no-exercise {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">AI مدرب اللياقة</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">الصفحة الرئيسية</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-lg-8 col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0" id="exercise-title">تتبع التمرين</h5>
+                    </div>
+                    <div class="card-body text-center p-0">
+                        <div id="video-container">
+                            <video id="webrtc-video" autoplay playsinline></video>
+                            <button class="fullscreen-btn" id="fullscreen-btn">تكبير الشاشة</button>
+                            <div id="loading-indicator" class="d-none">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">جاري التحميل...</span>
+                                </div>
+                                <p class="mt-2">جاري تشغيل الكاميرا...</p>
+                            </div>
+                            <div id="error-message" class="alert alert-danger d-none">
+                                حدث خطأ في تشغيل الكاميرا. يرجى التأكد من السماح بالوصول إلى الكاميرا.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-12">
+                <div id="exercise-info" class="mb-4">
+                    <h4 id="exercise-name">جاري تحميل معلومات التمرين...</h4>
+                    <p id="exercise-description"></p>
+                    <div id="exercise-instructions"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white text-center py-3 mt-5">
+        <div class="container">
+            <p class="mb-0">AI مدرب اللياقة &copy; 2025 - جميع الحقوق محفوظة</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/webrtc.js"></script>
+    <script>
+        // استعلام معرف التمرين من الرابط
+        const exerciseId = "{{ exercise_id }}";
+        
+        // معلومات التمارين
+        const exerciseDescriptions = {
+            'hummer': {
+                name: 'Bicep Curl (Hammer) Exercise',
+                description: 'An exercise to strengthen the front arm muscles (biceps) in a hammer grip style.',
+                instructions: [
+                    'Stand straight holding weights beside your body',
+                    'Bend your elbows to lift the weight toward your shoulders while keeping your upper arms stationary',
+                    'Slowly lower the weight back to the starting position',
+                    'Continue to breathe normally during the exercise'
+                ]
+            },
+            'front_raise': {
+                name: 'Front Raise Exercise',
+                description: 'An exercise to strengthen the front shoulder muscles.',
+                instructions: [
+                    'Stand with weights in front of your thighs',
+                    'Lift your arms forward until they are parallel to the ground',
+                    'Slowly return the weight back to the starting position',
+                    'Keep your back straight throughout the exercise'
+                ]
+            },
+            'squat': {
+                name: 'Squat Exercise',
+                description: 'A fundamental exercise to strengthen the leg and glute muscles.',
+                instructions: [
+                    'Stand with your feet shoulder-width apart',
+                    'Lower your body as if you were sitting in a chair',
+                    'Keep your back straight and your knees above your feet',
+                    'Return to the standing position by pushing the ground with your heels'
+                ]
+            },
+            'triceps': {
+                name: 'Triceps Extension Exercise',
+                description: 'An exercise to strengthen the rear arm muscles (triceps).',
+                instructions: [
+                    'Stand with the weight overhead in both hands',
+                    'Bend your elbows to lower the weight behind your head',
+                    'Extend your arms to lift the weight back up',
+                    'Focus on moving only your elbows'
+                ]
+            },
+            'lunges': {
+                name: 'Lunges Exercise',
+                description: 'An exercise to strengthen the leg and glute muscles with a focus on balance.',
+                instructions: [
+                    'Stand with your feet facing forward',
+                    'Take a large step forward with one foot',
+                    'Lower your body until your front knee forms a 90-degree angle',
+                    'Push off the front foot to return to the starting position'
+                ]
+            },
+            'shoulder_press': {
+                name: 'Shoulder Press Exercise',
+                description: 'An exercise to strengthen the shoulder muscles.',
+                instructions: [
+                    'Stand or sit with weights at shoulder level',
+                    'Press the weights overhead until your arms are fully extended',
+                    'Slowly lower the weights back to shoulder level',
+                    'Repeat while keeping your back straight'
+                ]
+            },
+            'plank': {
+                name: 'Plank Exercise',
+                description: 'An exercise to strengthen the core and back muscles and improve stability.',
+                instructions: [
+                    'Lie on your stomach and lift your body supported by your forearms and toes',
+                    'Maintain a straight line from your head to your heels',
+                    'Tighten your core muscles and hold the position',
+                    'Try to hold the position for 30 seconds or more'
+                ]
+            },
+            'side_lateral_raise': {
+                name: 'Side Lateral Raise Exercise',
+                description: 'An exercise to strengthen the lateral shoulder muscles.',
+                instructions: [
+                    'Stand with weights at your sides',
+                    'Raise your arms out to the sides until they are parallel to the ground',
+                    'Slowly lower the weights back to the starting position',
+                    'Keep your elbows slightly straight during the exercise'
+                ]
+            },
+            'triceps_kickback_side': {
+                name: 'Triceps Kickback Exercise',
+                description: 'An exercise to strengthen the rear arm muscles (triceps) from a side position.',
+                instructions: [
+                    'Bend forward slightly, keeping your knees bent',
+                    'Pull your elbows back so they are high beside your body',
+                    'Extend your arms backward while keeping your elbows stationary',
+                    'Bend your arms slowly to return to the starting position'
+                ]
+            },
+            'push_ups': {
+                name: 'Push Up Exercise',
+                description: 'A fundamental exercise to strengthen the chest, arms, and shoulder muscles.',
+                instructions: [
+                    'Start in a prone position with your body supported by your hands and toes',
+                    'Lower your body by bending your elbows until your chest is close to the ground',
+                    'Push your body back up by extending your elbows',
+                    'Keep your body straight throughout the exercise'
+                ]
+            }
+        };
+        
+        // عناصر DOM
+        const exerciseTitle = document.getElementById('exercise-title');
+        const exerciseName = document.getElementById('exercise-name');
+        const exerciseDescription = document.getElementById('exercise-description');
+        const exerciseInstructions = document.getElementById('exercise-instructions');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const videoContainer = document.getElementById('video-container');
+        
+        // وظيفة لعرض معلومات التمرين
+        function displayExerciseInfo(exerciseId) {
+            const exerciseData = exerciseDescriptions[exerciseId] || {
+                name: 'Unknown Exercise',
+                description: 'No description available',
+                instructions: ['No instructions available']
+            };
+            
+            // تعيين عنوان التمرين
+            exerciseTitle.textContent = `تتبع تمرين: ${exerciseData.name}`;
+            
+            // تعيين اسم التمرين
+            exerciseName.textContent = exerciseData.name;
+            
+            // تعيين وصف التمرين
+            exerciseDescription.textContent = exerciseData.description;
+            
+            // تعيين تعليمات التمرين
+            let instructionsHtml = `
+                <h6 class="mt-3">Exercise Instructions:</h6>
+                <ol>
+            `;
+            
+            exerciseData.instructions.forEach(instruction => {
+                instructionsHtml += `<li>${instruction}</li>`;
+            });
+            
+            instructionsHtml += `
+                </ol>
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle"></i> Make sure to follow the instructions for the best results and to avoid injuries.
+                </div>
+            `;
+            
+            exerciseInstructions.innerHTML = instructionsHtml;
+        }
+        
+        // وظيفة لتكبير الشاشة
+        fullscreenBtn.addEventListener('click', () => {
+            if (videoContainer.requestFullscreen) {
+                videoContainer.requestFullscreen();
+            } else if (videoContainer.webkitRequestFullscreen) { /* Safari */
+                videoContainer.webkitRequestFullscreen();
+            } else if (videoContainer.msRequestFullscreen) { /* IE11 */
+                videoContainer.msRequestFullscreen();
+            }
+        });
+        
+        // عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('الصفحة تم تحميلها، التمرين الحالي:', exerciseId);
+            
+            // عرض معلومات التمرين
+            displayExerciseInfo(exerciseId);
+            
+            // التحقق من وجود rtcHandler
+            if (window.rtcHandler) {
+                console.log('rtcHandler موجود، جاري بدء الاتصال');
+                // يمكننا أولا تجربة الطريقة المباشرة (Legacy) إذا كانت WebRTC لا تعمل
+                try {
+                    showLegacyStream(exerciseId);
+                } catch (e) {
+                    console.log('فشل استخدام الطريقة المباشرة، محاولة استخدام WebRTC');
+                    window.rtcHandler.initConnection(exerciseId);
+                }
+            } else {
+                console.error('RTCHandler غير متوفر، استخدام الطريقة المباشرة');
+                showLegacyStream(exerciseId);
+            }
+        });
+        
+        // وظيفة لعرض بث الفيديو بالطريقة المباشرة
+        function showLegacyStream(exerciseId) {
+            console.log('استخدام بث الفيديو المباشر للتمرين:', exerciseId);
+            const videoContainer = document.getElementById('video-container');
+            
+            // إزالة عناصر التحميل والخطأ
+            document.getElementById('loading-indicator').classList.add('d-none');
+            document.getElementById('error-message').classList.add('d-none');
+            
+            // إنشاء عنصر img للعرض
+            const imgElement = document.createElement('img');
+            imgElement.style.width = '100%';
+            imgElement.style.height = 'auto';
+            imgElement.src = `/video_feed/${exerciseId}`;
+            
+            // الحفاظ على زر تكبير الشاشة
+            const fullscreenBtn = document.getElementById('fullscreen-btn');
+            
+            // استبدال الفيديو بالصورة مع الاحتفاظ بزر تكبير الشاشة
+            videoContainer.innerHTML = '';
+            videoContainer.appendChild(imgElement);
+            videoContainer.appendChild(fullscreenBtn);
+            
+            console.log('تم تكوين بث الفيديو المباشر بنجاح');
+        }
+    </script>
+</body>
+</html> -->
+
+
+
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Fitness Trainer - {{ exercise_id }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            touch-action: manipulation;
+        }
+        
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #webrtc-video, img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Changed from cover to contain */
+            max-height: 90vh; /* Limit height to 90% of viewport height */
+            display: block;
+        }
+        
+        /* For mobile phones in portrait mode, ensure the width fits properly */
+        @media (orientation: portrait) and (max-width: 600px) {
+            #webrtc-video, img {
+                width: 100%;
+                height: auto;
+                max-height: 80vh;
+            }
+        }
+        
+        /* For mobile phones in landscape mode */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #webrtc-video, img {
+                height: 100%;
+                width: auto;
+                max-width: 95vw;
+            }
+        }
+        
+        #loading-indicator, #error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 10;
+        }
+        
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            z-index: 20;
+        }
+        
+        .camera-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            z-index: 20;
+        }
+        
+        /* Instruction text at the bottom of the screen */
+        .instruction-text {
+            position: absolute;
+            bottom: 85px;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="webrtc-video" autoplay playsinline></video>
+        
+        <button class="camera-btn" id="camera-switch-btn">
+            <i class="bi bi-camera"></i>
+        </button>
+        
+        <button class="fullscreen-btn" id="fullscreen-btn">
+            <i class="bi bi-fullscreen"></i>
+        </button>
+        
+        <div class="instruction-text" id="instruction-text">أبدأ التمرين</div>
+        
+        <div id="loading-indicator" class="d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">جاري التحميل...</span>
+            </div>
+            <p class="mt-2">جاري تشغيل الكاميرا...</p>
+        </div>
+        
+        <div id="error-message" class="alert alert-danger d-none">
+            <p>حدث خطأ في تشغيل الكاميرا</p>
+            <button class="btn btn-outline-light mt-2" onclick="location.reload()">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/webrtc.js"></script>
+    <script>
+        // استعلام معرف التمرين من الرابط
+        const exerciseId = "{{ exercise_id }}";
+        let isFullscreen = false;
+        
+        // عناصر DOM
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const videoContainer = document.getElementById('video-container');
+        const cameraSwitchBtn = document.getElementById('camera-switch-btn');
+        const instructionText = document.getElementById('instruction-text');
+        
+        // إخفاء زر تبديل الكاميرا إذا لم يكن مدعومًا
+        if (!('mediaDevices' in navigator) || !('enumerateDevices' in navigator.mediaDevices)) {
+            cameraSwitchBtn.style.display = 'none';
+        }
+        
+        // ضبط وضع الفيديو بناءً على توجه الشاشة
+        function adjustVideoSize() {
+            const video = document.getElementById('webrtc-video');
+            const img = videoContainer.querySelector('img');
+            const targetElement = video || img;
+            
+            if (!targetElement) return;
+            
+            if (window.innerHeight > window.innerWidth) {
+                // وضع عمودي
+                targetElement.style.width = '100%';
+                targetElement.style.height = 'auto';
+                targetElement.style.maxHeight = '80vh';
+            } else {
+                // وضع أفقي
+                targetElement.style.height = '100%';
+                targetElement.style.width = 'auto';
+                targetElement.style.maxWidth = '95vw';
+            }
+        }
+        
+        // وظيفة لتبديل وضع ملء الشاشة
+        function toggleFullscreen() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
+            if (!isFullscreen) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                } else if (document.documentElement.msRequestFullscreen) {
+                    document.documentElement.msRequestFullscreen();
+                }
+                isFullscreen = true;
+                fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen-exit"></i>';
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                isFullscreen = false;
+                fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen"></i>';
+            }
+        }
+        
+        // تبديل الكاميرا (الأمامية/الخلفية)
+        async function switchCamera() {
+            if (!window.rtcHandler || !window.rtcHandler.localStream) {
+                console.log('لا يمكن تبديل الكاميرا');
+                return;
+            }
+            
+            try {
+                // إيقاف المسارات الحالية
+                window.rtcHandler.localStream.getTracks().forEach(track => track.stop());
+                
+                // حصول على قائمة الكاميرات
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                if (videoDevices.length <= 1) {
+                    console.log('لا توجد كاميرات متعددة');
+                    return;
+                }
+                
+                // حفظ معرف الكاميرا الحالية
+                const currentDevice = window.rtcHandler.currentCameraId;
+                
+                // البحث عن كاميرا مختلفة
+                let newDeviceId;
+                if (!currentDevice) {
+                    newDeviceId = videoDevices[1].deviceId;
+                } else {
+                    const currentDeviceIndex = videoDevices.findIndex(device => device.deviceId === currentDevice);
+                    const nextDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+                    newDeviceId = videoDevices[nextDeviceIndex].deviceId;
+                }
+                
+                // الحصول على تدفق الكاميرا الجديدة
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        deviceId: { exact: newDeviceId },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                
+                // تعيين التدفق الجديد
+                window.rtcHandler.localStream = newStream;
+                window.rtcHandler.currentCameraId = newDeviceId;
+                
+                // عرض التدفق الجديد
+                window.rtcHandler.videoElement.srcObject = newStream;
+                
+                // ضبط حجم الفيديو
+                setTimeout(adjustVideoSize, 300);
+            } catch (error) {
+                console.error('خطأ في تبديل الكاميرا:', error);
+            }
+        }
+        
+        // وظيفة لعرض بث الفيديو بالطريقة المباشرة
+        function showLegacyStream(exerciseId) {
+            console.log('استخدام بث الفيديو المباشر للتمرين:', exerciseId);
+            
+            // إزالة عناصر التحميل والخطأ
+            document.getElementById('loading-indicator').classList.add('d-none');
+            document.getElementById('error-message').classList.add('d-none');
+            
+            // إنشاء عنصر img للعرض
+            const imgElement = document.createElement('img');
+            imgElement.style.width = '100%';
+            imgElement.style.height = 'auto';
+            imgElement.style.objectFit = 'contain';
+            imgElement.style.maxHeight = '80vh';
+            imgElement.src = `/video_feed/${exerciseId}`;
+            
+            // حفظ الأزرار
+            const fullscreenButton = document.getElementById('fullscreen-btn');
+            const cameraButton = document.getElementById('camera-switch-btn');
+            const instruction = document.getElementById('instruction-text');
+            
+            // استبدال الفيديو بالصورة مع الاحتفاظ بالأزرار
+            videoContainer.innerHTML = '';
+            videoContainer.appendChild(imgElement);
+            videoContainer.appendChild(fullscreenButton);
+            videoContainer.appendChild(cameraButton);
+            videoContainer.appendChild(instruction);
+            
+            console.log('تم تكوين بث الفيديو المباشر بنجاح');
+            
+            // ضبط حجم الفيديو
+            setTimeout(adjustVideoSize, 300);
+        }
+        
+        // قائمة التعليمات
+        const instructionList = [
+            "أبدأ التمرين",
+            "حافظ على ظهرك مستقيمًا",
+            "اخفض كتفيك",
+            "تنفس بشكل طبيعي",
+            "حافظ على التوازن"
+        ];
+        
+        let currentInstructionIndex = 0;
+        
+        // تغيير التعليمات كل 5 ثوانٍ
+        function changeInstruction() {
+            currentInstructionIndex = (currentInstructionIndex + 1) % instructionList.length;
+            instructionText.textContent = instructionList[currentInstructionIndex];
+        }
+        
+        // إضافة مستمعي الأحداث
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        cameraSwitchBtn.addEventListener('click', switchCamera);
+        window.addEventListener('resize', adjustVideoSize);
+        window.addEventListener('orientationchange', function() {
+            setTimeout(adjustVideoSize, 300);
+        });
+        
+        // عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('الصفحة تم تحميلها، التمرين الحالي:', exerciseId);
+            
+            // منع إيقاف الشاشة
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.error('خطأ في منع إيقاف الشاشة:', err);
+                }
+            }
+            
+            // التحقق من وجود rtcHandler
+            if (window.rtcHandler) {
+                console.log('rtcHandler موجود، جاري بدء الاتصال');
+                try {
+                    // أولا تجربة الطريقة المباشرة
+                    showLegacyStream(exerciseId);
+                } catch (e) {
+                    console.log('استخدام WebRTC');
+                    document.getElementById('loading-indicator').classList.remove('d-none');
+                    window.rtcHandler.initConnection(exerciseId);
+                }
+            } else {
+                console.error('RTCHandler غير متوفر، استخدام الطريقة المباشرة');
+                showLegacyStream(exerciseId);
+            }
+            
+            // ضبط حجم الفيديو
+            setTimeout(adjustVideoSize, 500);
+            
+            // تغيير التعليمات كل 5 ثوانٍ
+            setInterval(changeInstruction, 5000);
+        });
+    </script>
+</body>
+</html>

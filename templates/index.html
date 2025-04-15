@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fitness Trainer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">AI مدرب اللياقة</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#exercises">التمارين</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#about">عن التطبيق</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">شاشة تتبع التمرين</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <!-- سيتم استبدال الصورة بفيديو WebRTC -->
+                        <div id="video-container">
+                            <video id="webrtc-video" autoplay playsinline></video>
+                            <div id="loading-indicator" class="d-none">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">جاري التحميل...</span>
+                                </div>
+                                <p class="mt-2">جاري تشغيل الكاميرا...</p>
+                            </div>
+                            <div id="error-message" class="alert alert-danger d-none">
+                                حدث خطأ في تشغيل الكاميرا. يرجى التأكد من السماح بالوصول إلى الكاميرا.
+                            </div>
+                            <div id="no-exercise" class="text-center p-5">
+                                <h4>اختر تمرينًا من القائمة</h4>
+                                <p>سيظهر هنا فيديو تتبع الحركة</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">اختر التمرين</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="exercise-list" class="list-group exercise-list">
+                            <!-- سيتم إضافة التمارين هنا بواسطة JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">تفاصيل التمرين</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="exercise-info">
+                            <p>اختر تمرينًا لعرض التفاصيل</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white text-center py-3 mt-5">
+        <div class="container">
+            <p class="mb-0">AI مدرب اللياقة &copy; 2025 - جميع الحقوق محفوظة</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/webrtc.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

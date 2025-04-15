@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>اختبار الكاميرا</title>
+    <style>
+        body { text-align: center; font-family: Arial; }
+        video { width: 640px; height: 480px; border: 1px solid #ccc; }
+        button { padding: 10px; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>اختبار الكاميرا</h1>
+    <video id="camera" autoplay playsinline></video>
+    <div>
+        <button id="startBtn">تشغيل الكاميرا</button>
+        <button id="stopBtn">إيقاف الكاميرا</button>
+    </div>
+    <div id="status"></div>
+
+    <script>
+        const video = document.getElementById('camera');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        let stream = null;
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                status.textContent = 'جاري تشغيل الكاميرا...';
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+                status.textContent = 'تم تشغيل الكاميرا بنجاح';
+            } catch (error) {
+                status.textContent = 'خطأ: ' + error.message;
+                console.error('Error accessing camera:', error);
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                stream = null;
+                status.textContent = 'تم إيقاف الكاميرا';
+            }
+        });
+    </script>
+</body>
+</html>

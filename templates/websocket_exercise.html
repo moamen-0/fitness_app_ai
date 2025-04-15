@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Fitness Trainer - {{ exercise_id }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            touch-action: manipulation;
+        }
+        
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-height: 90vh;
+            display: block;
+        }
+        
+        #processed-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-height: 90vh;
+            display: block;
+        }
+        
+        /* للهواتف في الوضع الرأسي */
+        @media (orientation: portrait) and (max-width: 600px) {
+            #camera-video, #processed-video {
+                width: 100%;
+                height: auto;
+                max-height: 80vh;
+            }
+        }
+        
+        /* للهواتف في الوضع الأفقي */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #camera-video, #processed-video {
+                height: 100%;
+                width: auto;
+                max-width: 95vw;
+            }
+        }
+        
+        #loading-indicator, #error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 10;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            z-index: 20;
+        }
+        
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .info-box {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            z-index: 5;
+        }
+        
+        .rep-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 5;
+        }
+        
+        .feedback-text {
+            position: absolute;
+            bottom: 80px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="camera-video" playsinline autoplay muted></video>
+        <img id="processed-video" src="" alt="{{ exercise_id }}">
+        
+        <div class="info-box">
+            <div>تمرين: {{ exercise_id }}</div>
+            <div class="connection-status">جاري الاتصال...</div>
+        </div>
+        
+        <div class="rep-counter">
+            <div>يمين: <span id="right-counter">0</span></div>
+            <div>يسار: <span id="left-counter">0</span></div>
+        </div>
+        
+        <div class="feedback-text" id="feedback-text">ابدأ التمرين</div>
+        
+        <div class="controls">
+            <button class="control-btn" id="camera-switch-btn" title="تبديل الكاميرا">
+                <i class="bi bi-camera"></i>
+            </button>
+            <button class="control-btn" id="start-btn" title="بدء/إيقاف التمرين">
+                <i class="bi bi-play-fill"></i>
+            </button>
+            <button class="control-btn" id="fullscreen-btn" title="ملء الشاشة">
+                <i class="bi bi-fullscreen"></i>
+            </button>
+            <button class="control-btn" id="reload-btn" title="إعادة تحميل">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+        
+        <div id="loading-indicator">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">جاري التحميل...</span>
+            </div>
+            <p>جاري تشغيل الكاميرا...</p>
+        </div>
+        
+        <div id="error-message" class="d-none">
+            <p id="error-text">حدث خطأ في الاتصال</p>
+            <button class="btn btn-outline-light mt-2" id="retry-btn">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/js/websocket-camera.js"></script>
+    <script>
+        // متغيرات عامة
+        const exerciseId = "{{ exercise_id }}";
+        let isFullscreen = false;
+        let isExerciseRunning = false;
+        
+        // عناصر DOM
+        const startBtn = document.getElementById('start-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const reloadBtn = document.getElementById('reload-btn');
+        const cameraSwitchBtn = document.getElementById('camera-switch-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const connectionStatus = document.querySelector('.connection-status');
+        const leftCounter = document.getElementById('left-counter');
+        const rightCounter = document.getElementById('right-counter');
+        const feedbackText = document.getElementById('feedback-text');
+        const processedVideo = document.getElementById('processed-video');
+        
+        // تهيئة اتصال WebSocket والكاميرا
+        async function initializeWebSocketCamera() {
+            // إظهار مؤشر التحميل
+            loadingIndicator.classList.remove('d-none');
+            errorMessage.classList.add('d-none');
+            
+            try {
+                // الحصول على عنوان خادم WebSocket
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                const wsUrl = `${protocol}//${host}`;
+                
+                console.log(`Connecting to WebSocket at ${wsUrl}`);
+                
+                // تهيئة معالج الكاميرا والاتصال
+                const success = await window.wsCamera.initialize(wsUrl, exerciseId, {
+                    videoElement: document.getElementById('camera-video'),
+                    width: 640,
+                    height: 480,
+                    facingMode: 'user' // يمكنك تغيير هذا إلى 'environment' للكاميرا الخلفية
+                });
+                
+                if (!success) {
+                    throw new Error('فشل في تهيئة الكاميرا أو اتصال WebSocket');
+                }
+                
+                // إضافة مستمعي أحداث Socket.IO
+                setupSocketEvents();
+                
+                // إخفاء مؤشر التحميل
+                loadingIndicator.classList.add('d-none');
+                connectionStatus.textContent = "متصل";
+                
+            } catch (error) {
+                console.error('Error initializing WebSocket camera:', error);
+                showError('حدث خطأ في تشغيل الكاميرا أو الاتصال بالخادم');
+            }
+        }
+        
+        // إعداد أحداث Socket.IO
+        function setupSocketEvents() {
+            const socket = window.wsCamera.socket;
+            
+            socket.on('connect', () => {
+                console.log('Connected to WebSocket server');
+                connectionStatus.textContent = "متصل";
+                loadingIndicator.classList.add('d-none');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from WebSocket server');
+                connectionStatus.textContent = "غير متصل";
+                stopExercise();
+            });
+            
+            socket.on('error', (data) => {
+                console.error('WebSocket error:', data.message);
+                showError(data.message);
+            });
+            
+            // استقبال إطارات التمرين المعالجة
+            socket.on('exercise_frame', (data) => {
+                // تحديث الصورة المعالجة
+                if (data.frame) {
+                    processedVideo.src = `data:image/jpeg;base64,${data.frame}`;
+                }
+                
+                // تحديث العدادات
+                if (data.left_counter !== undefined) {
+                    leftCounter.textContent = data.left_counter;
+                }
+                
+                if (data.right_counter !== undefined) {
+                    rightCounter.textContent = data.right_counter;
+                }
+                
+                // تحديث التغذية الراجعة
+                if (data.feedback) {
+                    feedbackText.textContent = data.feedback;
+                }
+            });
+            
+            socket.on('exercise_started', (data) => {
+                console.log('Exercise started:', data);
+                isExerciseRunning = true;
+                updateButtonState();
+            });
+            
+            socket.on('exercise_stopped', () => {
+                console.log('Exercise stopped');
+                isExerciseRunning = false;
+                updateButtonState();
+            });
+        }
+        
+        // بدء التمرين
+        function startExercise() {
+            if (!window.wsCamera) {
+                showError('معالج الكاميرا غير متاح');
+                return;
+            }
+            
+            window.wsCamera.startStreaming();
+            isExerciseRunning = true;
+            updateButtonState();
+        }
+        
+        // إيقاف التمرين
+        function stopExercise() {
+            if (!window.wsCamera) return;
+            
+            window.wsCamera.stopStreaming();
+            isExerciseRunning = false;
+            updateButtonState();
+            
+            // إعادة ضبط العدادات في الواجهة
+            leftCounter.textContent = '0';
+            rightCounter.textContent = '0';
+            feedbackText.textContent = 'ابدأ التمرين';
+        }
+        
+        // تبديل وضع ملء الشاشة
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+                isFullscreen = true;
+                fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen-exit"></i>';
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    isFullscreen = false;
+                    fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen"></i>';
+                }
+            }
+        }
+        
+        // عرض رسالة خطأ
+        function showError(message) {
+            loadingIndicator.classList.add('d-none');
+            errorMessage.classList.remove('d-none');
+            errorText.textContent = message || 'حدث خطأ في الاتصال';
+        }
+        
+        // تحديث حالة الأزرار
+        function updateButtonState() {
+            if (isExerciseRunning) {
+                startBtn.innerHTML = '<i class="bi bi-stop-fill"></i>';
+                startBtn.title = 'إيقاف التمرين';
+            } else {
+                startBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+                startBtn.title = 'بدء التمرين';
+            }
+        }
+        
+        // إعادة تحميل الصفحة
+        function reloadPage() {
+            location.reload();
+        }
+        
+        // تبديل الكاميرا الأمامية/الخلفية
+        async function switchCamera() {
+            try {
+                if (window.wsCamera) {
+                    await window.wsCamera.switchCamera();
+                }
+            } catch (error) {
+                console.error('Error switching camera:', error);
+                showError('فشل في تبديل الكاميرا');
+            }
+        }
+        
+        // إضافة مستمعي الأحداث
+        startBtn.addEventListener('click', () => {
+            if (isExerciseRunning) {
+                stopExercise();
+            } else {
+                startExercise();
+            }
+        });
+        
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        reloadBtn.addEventListener('click', reloadPage);
+        retryBtn.addEventListener('click', initializeWebSocketCamera);
+        cameraSwitchBtn.addEventListener('click', switchCamera);
+        
+        // تهيئة عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            // إخفاء زر تبديل الكاميرا إذا لم تكن مدعومة
+            if (!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)) {
+                cameraSwitchBtn.style.display = 'none';
+            }
+            
+            initializeWebSocketCamera();
+        });
+        
+        // معالجة أحداث تغيير رؤية الصفحة
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && window.wsCamera && 
+                window.wsCamera.socket && !window.wsCamera.socket.connected) {
+                initializeWebSocketCamera();
+            }
+        });
+        
+        // معالجة تغيير حجم الشاشة
+        window.addEventListener('resize', () => {
+            // تعديل حجم الفيديو حسب توجيه الشاشة
+            adjustVideoSize();
+        });
+        
+        // تعديل حجم الفيديو حسب توجيه الشاشة
+        function adjustVideoSize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const cameraVideo = document.getElementById('camera-video');
+            const processedVideo = document.getElementById('processed-video');
+            
+            if (width < height) {
+                // وضع عمودي (portrait)
+                cameraVideo.style.width = '100%';
+                cameraVideo.style.height = 'auto';
+                cameraVideo.style.maxHeight = '80vh';
+                
+                processedVideo.style.width = '100%';
+                processedVideo.style.height = 'auto';
+                processedVideo.style.maxHeight = '80vh';
+            } else {
+                // وضع أفقي (landscape)
+                cameraVideo.style.height = '100%';
+                cameraVideo.style.width = 'auto';
+                cameraVideo.style.maxWidth = '95vw';
+                
+                processedVideo.style.height = '100%';
+                processedVideo.style.width = 'auto';
+                processedVideo.style.maxWidth = '95vw';
+            }
+        }
+        
+        // منع الشاشة من الإيقاف التلقائي (للأجهزة المدعومة)
+        async function preventScreenLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    const wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock is active');
+                    
+                    // تجديد قفل الشاشة عند تغيير رؤية الصفحة
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.visibilityState === 'visible' && wakeLock === null) {
+                            await navigator.wakeLock.request('screen');
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error(`Error requesting Wake Lock: ${err.message}`);
+            }
+        }
+        
+        // استدعاء منع قفل الشاشة
+        preventScreenLock();
+    </script>
+</body>
+</html>

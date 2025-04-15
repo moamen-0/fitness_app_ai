@@ -1,0 +1,29 @@
+runtime: python39
+
+# Use gunicorn middleware for socketio
+entrypoint: gunicorn -b :$PORT --timeout 120 --workers 1 'main:app'
+
+# Use a basic instance class
+instance_class: F2
+
+env_variables:
+  PYTHONUNBUFFERED: 'True'
+  DEBUG: 'False'
+
+handlers:
+- url: /static
+  static_dir: static
+  secure: always
+
+- url: /.*
+  script: auto
+  secure: always
+
+# Enable session affinity for WebSockets
+network:
+  session_affinity: true
+
+# Use automatic scaling with minimal settings
+automatic_scaling:
+  min_instances: 1
+  max_instances: 2
