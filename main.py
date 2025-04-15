@@ -2,21 +2,26 @@
 from app import app, socketio
 
 # Load mediapipe at module level for Cloud compatibility
-import mediapipe as mp
-mp_drawing = mp.solutions.drawing_utils
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
-    model_complexity=1
-)
+try:
+    import mediapipe as mp
+    mp_drawing = mp.solutions.drawing_utils
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        model_complexity=1
+    )
+    
+    # This makes the global variables available to the app module
+    from app import _setup_global_variables
+    _setup_global_variables(mp_drawing, mp_pose, pose)
+    print("MediaPipe initialized successfully at module level")
+except Exception as e:
+    print(f"Warning: MediaPipe initialization error: {e}")
+    print("MediaPipe will be initialized on demand")
 
-# This makes the global variables available to the app module
-from app import _setup_global_variables
-_setup_global_variables(mp_drawing, mp_pose, pose)
-
-# For Cloud Run deployment - WSGI application
-application = socketio.middleware(app)
+# For Cloud Run deployment - WSGI application with proper middleware
+application = socketio.wsgi_app
 
 if __name__ == "__main__":
     # Development server
