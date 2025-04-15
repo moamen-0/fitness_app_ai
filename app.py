@@ -34,21 +34,18 @@ from exercises.push_ups import push_ups
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
 
-# Update SocketIO configuration with proper settings for Cloud Run
-try:
-    import gevent
-except ImportError:
-    pass
-
+# Update SocketIO configuration for better Cloud Run compatibility with HTTP/2
 socketio = SocketIO(
     app, 
     cors_allowed_origins="*",
-    async_mode='eventlet',  # Change to eventlet for better Cloud Run compatibility
-    ping_timeout=60,      # Longer timeouts for Cloud Run
-    ping_interval=25,     # More frequent pings
-    engineio_logger=True, # For debugging, set to False in production
+    async_mode='eventlet',
+    ping_timeout=60,
+    ping_interval=25,
+    engineio_logger=True,
     logger=True,
-    always_connect=True  # Important for Cloud Run
+    always_connect=True,
+    http_compression=False,  # Disable compression for HTTP/2 compatibility
+    manage_session=False     # Let Flask handle sessions
 )
 
 # Setup for async processing
@@ -348,6 +345,16 @@ def handle_stop_exercise():
         print(f"Error stopping exercise: {str(e)}")
         emit('error', {'message': f'Error stopping exercise: {str(e)}'})
 
+@socketio.on('get_exercises')
+def handle_get_exercises():
+    """Return list of exercises when requested via Socket.IO"""
+    try:
+        available_exercises = get_exercises()
+        emit('exercises', available_exercises)
+    except Exception as e:
+        print(f"Error getting exercises: {str(e)}")
+        emit('error', {'message': f'Error getting exercises: {str(e)}'})
+
 def process_exercise_frames(session_id, exercise_id, stop_event):
     """
     Process exercise frames and send them via WebSocket
@@ -590,6 +597,14 @@ def socketio_config():
     }
     return jsonify(config)
 
+@app.route('/_ah/health')
+def health_check():
+    """Health check endpoint for Cloud Run"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.datetime.now().isoformat()
+    })
+
 @app.after_request
 def add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -618,7 +633,7 @@ if __name__ == '__main__':
         print(f"Error initializing libraries: {e}")
     
     port = int(os.environ.get('PORT', 8080))
-    print(f"Starting server on port {port}")
+    print(f"Starting server on port {port}, HTTP/2 enabled")
     socketio.run(
         app, 
         host='0.0.0.0', 

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTTP/2 Socket.IO Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #log {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 10px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+    </style>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>HTTP/2 Socket.IO Test</h1>
+    <p>This page tests connection to a Socket.IO server through HTTP/2 with polling fallback.</p>
+
+    <div id="status">Status: Disconnected</div>
+
+    <div>
+        <button id="polling-btn">Connect (Polling)</button>
+        <button id="ws-btn">Connect (WebSocket)</button>
+        <button id="both-btn">Connect (Auto)</button>
+        <button id="disconnect-btn" disabled>Disconnect</button>
+        <button id="clear-log-btn">Clear Log</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // DOM elements
+        const statusElement = document.getElementById('status');
+        const pollingBtn = document.getElementById('polling-btn');
+        const wsBtn = document.getElementById('ws-btn');
+        const bothBtn = document.getElementById('both-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const logContainer = document.getElementById('log');
+
+        // Socket.IO instance
+        let socket = null;
+
+        // Log function
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        // Update UI for connection
+        function updateUIForConnection(isConnected) {
+            if (isConnected) {
+                statusElement.textContent = 'Status: Connected';
+                statusElement.style.color = 'green';
+                pollingBtn.disabled = true;
+                wsBtn.disabled = true;
+                bothBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusElement.textContent = 'Status: Disconnected';
+                statusElement.style.color = 'black';
+                pollingBtn.disabled = false;
+                wsBtn.disabled = false;
+                bothBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // Connect with polling transport
+        function connectWithPolling() {
+            try {
+                log('Connecting using polling transport only...', 'info');
+                
+                socket = io(window.location.origin, {
+                    transports: ['polling'],
+                    upgrade: false,
+                    reconnection: true,
+                    forceNew: true,
+                    timeout: 20000
+                });
+                
+                setupSocketEvents();
+            } catch (error) {
+                log(`Error setting up polling connection: ${error.message}`, 'error');
+            }
+        }
+
+        // Connect with WebSocket transport
+        function connectWithWebSocket() {
+            try {
+                log('Connecting using WebSocket transport only...', 'info');
+                
+                socket = io(window.location.origin, {
+                    transports: ['websocket'],
+                    upgrade: false,
+                    reconnection: true,
+                    forceNew: true,
+                    timeout: 20000
+                });
+                
+                setupSocketEvents();
+            } catch (error) {
+                log(`Error setting up WebSocket connection: ${error.message}`, 'error');
+            }
+        }
+
+        // Connect with automatic transport
+        function connectWithAuto() {
+            try {
+                log('Connecting using automatic transport (polling with upgrade)...', 'info');
+                
+                socket = io(window.location.origin, {
+                    transports: ['polling', 'websocket'],
+                    upgrade: true,
+                    reconnection: true,
+                    forceNew: true,
+                    timeout: 20000
+                });
+                
+                setupSocketEvents();
+            } catch (error) {
+                log(`Error setting up auto connection: ${error.message}`, 'error');
+            }
+        }
+
+        // Setup socket events
+        function setupSocketEvents() {
+            // Connection timeout
+            const connectionTimeout = setTimeout(() => {
+                if (socket && !socket.connected) {
+                    log('Connection timeout after 10 seconds', 'error');
+                }
+            }, 10000);
+
+            // Socket events
+            socket.on('connect', () => {
+                clearTimeout(connectionTimeout);
+                log('Connected successfully!', 'success');
+                updateUIForConnection(true);
+                
+                // Log transport type
+                const currentTransport = socket.io.engine.transport.name;
+                log(`Using transport: ${currentTransport}`, 'info');
+                
+                // Check for transport upgrade
+                socket.io.engine.on('upgrade', () => {
+                    const upgradedTransport = socket.io.engine.transport.name;
+                    log(`Transport upgraded to: ${upgradedTransport}`, 'success');
+                });
+                
+                // Request available exercises
+                socket.emit('get_exercises');
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`, 'info');
+                updateUIForConnection(false);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`Connection error: ${error.message}`, 'error');
+            });
+
+            socket.on('error', (error) => {
+                log(`Socket error: ${error}`, 'error');
+            });
+            
+            // Custom events for testing
+            socket.on('exercises', (data) => {
+                log(`Received exercises: ${JSON.stringify(data)}`, 'success');
+            });
+        }
+
+        // Disconnect
+        function disconnect() {
+            if (socket) {
+                log('Disconnecting...', 'info');
+                socket.disconnect();
+                socket = null;
+                updateUIForConnection(false);
+            }
+        }
+
+        // Clear log
+        function clearLog() {
+            logContainer.innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        // Event listeners
+        pollingBtn.addEventListener('click', connectWithPolling);
+        wsBtn.addEventListener('click', connectWithWebSocket);
+        bothBtn.addEventListener('click', connectWithAuto);
+        disconnectBtn.addEventListener('click', disconnect);
+        clearLogBtn.addEventListener('click', clearLog);
+
+        // Initial log
+        log('Page loaded', 'info');
+        log(`Running at: ${window.location.origin}`, 'info');
+        log('Use the buttons above to test different connection methods', 'info');
+    </script>
+</body>
+</html>

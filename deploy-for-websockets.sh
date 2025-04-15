@@ -7,6 +7,7 @@ gcloud run deploy ai-fitness-trainer \
   --region us-central1 \
   --allow-unauthenticated \
   --session-affinity \
+  --use-http2 \
   --min-instances 1 \
   --cpu 1 \
   --memory 512Mi \
@@ -14,6 +15,4 @@ gcloud run deploy ai-fitness-trainer \
   --timeout 300s \
   --execution-environment gen2 \
   --port 8080 \
-  --set-env-vars="PYTHONUNBUFFERED=True,DEBUG=False" \
-  --ingress=all \
-  --vpc-egress=private-ranges-only
+  --set-env-vars="PYTHONUNBUFFERED=True,DEBUG=False"
